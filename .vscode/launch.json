@@ -1,0 +1,11 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "nRF Connect Debug",
+            "type": "nrf-connect",
+            "request": "launch",
+            "config": "${workspaceFolder}/build/SensoryShield/zephyr/zephyr.elf"
+        }
+    ]
+}

@@ -1,5 +1,57 @@
 {
     "nrf-connect.applications": [
         "${workspaceFolder}"
-    ]
+    ],
+    "nrf-connect.toolchain.path": "/opt/nordic/ncs/toolchains/ccc010f809",
+    "nrf-connect.topdir": "/opt/nordic/ncs/v3.4.0",
+    "cmake.configureOnOpen": false,
+    "cmake.buildDirectory": "${workspaceFolder}/build",
+    "C_Cpp.default.configurationProvider": "nordic-semiconductor.nrf-connect",
+    "C_Cpp.default.cppStandard": "c++17",
+    "C_Cpp.default.cStandard": "c11",
+    "C_Cpp.default.intelliSenseMode": "gcc-arm",
+    "C_Cpp.errorSquiggles": "enabled",
+    "C_Cpp.autocomplete": "default",
+    "C_Cpp.codeAnalysis.clangTidy.enabled": true,
+    "C_Cpp.files.exclude": {
+        "**/build": true,
+        "**/build_*": true,
+        "**/frontend/node_modules": true,
+        "**/frontend/dist": true
+    },
+    "files.associations": {
+        "*.overlay": "devicetree",
+        "*.conf": "kconfig",
+        "*.h": "cpp",
+        "array": "cpp",
+        "atomic": "cpp",
+        "bit": "cpp",
+        "cctype": "cpp",
+        "cerrno": "cpp",
+        "cfloat": "cpp",
+        "chrono": "cpp",
+        "climits": "cpp",
+        "cmath": "cpp",
+        "cstdint": "cpp",
+        "cstdio": "cpp",
+        "cstdlib": "cpp",
+        "cstring": "cpp",
+        "initializer_list": "cpp",
+        "limits": "cpp",
+        "optional": "cpp",
+        "string": "cpp",
+        "type_traits": "cpp",
+        "utility": "cpp"
+    },
+    "editor.formatOnSave": true,
+    "editor.rulers": [
+        120
+    ],
+    "search.exclude": {
+        "**/build": true,
+        "**/build_*": true,
+        "**/frontend/node_modules": true,
+        "**/frontend/dist": true
+    },
+    "typescript.tsdk": "/Users/luna/Desktop/SensoryShield/frontend/node_modules/typescript/lib"
 }

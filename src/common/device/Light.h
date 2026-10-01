@@ -1,0 +1,44 @@
+#pragma once
+
+#include "common/device/device.h"
+
+struct LightState {
+    bool on;
+    uint8_t brightnessPercent;
+    uint16_t cctMireds;
+
+    bool operator!=(const LightState& other) const {
+        return on != other.on || brightnessPercent != other.brightnessPercent || cctMireds != other.cctMireds;
+    }
+};
+
+class LightDevice final : public Device {
+  public:
+    static LightDevice& Instance();
+
+    int Initialize() override;
+    int CreateEndpoint() override;
+    int UpdateToMatter(bool force = false) override;
+    int ApplyCommand(const DeviceCommand& command) override;
+    int ApplyTarget(bool on, uint8_t brightnessPercent, uint16_t cctMireds);
+    LightState CurrentState() const {
+        return mCurrentState;
+    }
+
+    LightDevice(const LightDevice&) = delete;
+    LightDevice& operator=(const LightDevice&) = delete;
+
+  private:
+    LightDevice();
+    ~LightDevice() override = default;
+
+    uint8_t MiredsToCoolPercent(uint16_t mireds) const;
+
+    LightState mCurrentState = {};
+    LightState mPreviousPublished = {};
+    uint8_t mLastOnBrightnessPercent = 50;
+};
+
+inline LightDevice* GetLightDevice() {
+    return &LightDevice::Instance();
+}

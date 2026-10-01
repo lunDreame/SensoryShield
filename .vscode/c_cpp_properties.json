@@ -1,0 +1,46 @@
+{
+    "version": 4,
+    "configurations": [
+        {
+            "name": "nRF54LM20 DK CPUAPP",
+            "configurationProvider": "nordic-semiconductor.nrf-connect",
+            "compileCommands": "${workspaceFolder}/build/SensoryShield/compile_commands.json",
+            "includePath": [
+                "/Users/luna/Desktop/SensoryShield/src",
+                "/Users/luna/Desktop/SensoryShield/build/SensoryShield/zephyr/include/generated",
+                "/Users/luna/Desktop/SensoryShield/build/SensoryShield/zephyr/include/generated/zephyr",
+                "/opt/nordic/ncs/v3.4.0/zephyr/include",
+                "/opt/nordic/ncs/v3.4.0/zephyr/include/zephyr",
+                "/opt/nordic/ncs/v3.4.0/zephyr/subsys/settings/include",
+                "/opt/nordic/ncs/v3.4.0/zephyr/subsys/fs",
+                "/opt/nordic/ncs/v3.4.0/zephyr/drivers",
+                "/opt/nordic/ncs/v3.4.0/nrf/include",
+                "/opt/nordic/ncs/v3.4.0/modules/lib/matter/src"
+            ],
+            "defines": [
+                "CONFIG_CPP=1",
+                "CONFIG_STD_CPP17=1",
+                "CONFIG_GPIO=1",
+                "CONFIG_I2C=1",
+                "CONFIG_PWM=1",
+                "CONFIG_PDM=1",
+                "CONFIG_SETTINGS=1",
+                "CONFIG_ZMS=1"
+            ],
+            "cStandard": "c11",
+            "cppStandard": "c++17",
+            "intelliSenseMode": "gcc-arm",
+            "browse": {
+                "path": [
+                    "/Users/luna/Desktop/SensoryShield/src",
+                    "/opt/nordic/ncs/v3.4.0/zephyr/include",
+                    "/opt/nordic/ncs/v3.4.0/zephyr/subsys",
+                    "/opt/nordic/ncs/v3.4.0/zephyr/drivers",
+                    "/opt/nordic/ncs/v3.4.0/nrf/include",
+                    "/opt/nordic/ncs/v3.4.0/modules/lib/matter/src"
+                ],
+                "limitSymbolsToIncludedHeaders": true
+            }
+        }
+    ]
+}

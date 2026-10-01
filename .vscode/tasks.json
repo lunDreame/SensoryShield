@@ -1,0 +1,134 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Firmware: pristine sysbuild",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/build.sh",
+            "args": [
+                "--pristine"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                    "ZEPHYR_SDK_INSTALL_DIR": "/opt/nordic/ncs/toolchains/ccc010f809/opt/zephyr-sdk"
+                }
+            }
+        },
+        {
+            "label": "Firmware: incremental sysbuild",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/build.sh",
+            "args": [],
+            "group": "build",
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                    "ZEPHYR_SDK_INSTALL_DIR": "/opt/nordic/ncs/toolchains/ccc010f809/opt/zephyr-sdk"
+                }
+            }
+        },
+        {
+            "label": "Firmware: flash all sysbuild domains",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/flash.sh",
+            "args": [],
+            "problemMatcher": [],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                    "ZEPHYR_SDK_INSTALL_DIR": "/opt/nordic/ncs/toolchains/ccc010f809/opt/zephyr-sdk"
+                }
+            }
+        },
+        {
+            "label": "Firmware: flash app only",
+            "type": "shell",
+            "command": "${workspaceFolder}/scripts/flash.sh",
+            "args": [
+                "--app-only"
+            ],
+            "problemMatcher": [],
+            "options": {
+                "cwd": "${workspaceFolder}",
+                "env": {
+                    "ZEPHYR_TOOLCHAIN_VARIANT": "zephyr",
+                    "ZEPHYR_SDK_INSTALL_DIR": "/opt/nordic/ncs/toolchains/ccc010f809/opt/zephyr-sdk"
+                }
+            }
+        },
+        {
+            "label": "Frontend: install",
+            "type": "shell",
+            "command": "npm",
+            "args": [
+                "ci"
+            ],
+            "problemMatcher": [],
+            "options": {
+                "cwd": "${workspaceFolder}/frontend"
+            }
+        },
+        {
+            "label": "Frontend: build",
+            "type": "shell",
+            "command": "npm",
+            "args": [
+                "run",
+                "build"
+            ],
+            "group": "build",
+            "problemMatcher": [
+                "$tsc"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}/frontend"
+            }
+        },
+        {
+            "label": "Frontend: dev server",
+            "type": "shell",
+            "command": "npm",
+            "args": [
+                "run",
+                "dev",
+                "--",
+                "--port",
+                "5173"
+            ],
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "vite",
+                "pattern": [
+                    {
+                        "regexp": ".",
+                        "file": 1,
+                        "location": 2,
+                        "message": 3
+                    }
+                ],
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": "VITE",
+                    "endsPattern": "ready in"
+                }
+            },
+            "options": {
+                "cwd": "${workspaceFolder}/frontend"
+            }
+        }
+    ]
+}
