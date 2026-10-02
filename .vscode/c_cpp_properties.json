@@ -23,7 +23,8 @@
                 "CONFIG_GPIO=1",
                 "CONFIG_I2C=1",
                 "CONFIG_PWM=1",
-                "CONFIG_PDM=1",
+                "CONFIG_AUDIO=1",
+                "CONFIG_AUDIO_DMIC=1",
                 "CONFIG_SETTINGS=1",
                 "CONFIG_ZMS=1"
             ],
