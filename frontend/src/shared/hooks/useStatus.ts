@@ -5,9 +5,11 @@ import type { StatusResponse } from "../types/domain";
 export function useStatus() {
   const [status, setStatus] = useState<StatusResponse>(fallbackStatus);
   const [error, setError] = useState<string | null>(null);
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null);
 
   useEffect(() => {
     let active = true;
+    let timer: number | undefined;
 
     async function poll() {
       try {
@@ -15,21 +17,24 @@ export function useStatus() {
         if (active) {
           setStatus(next);
           setError(null);
+          setUpdatedAt(Date.now());
         }
       } catch (err) {
         if (active) {
           setError(err instanceof Error ? err.message : "status unavailable");
+          setStatus((current) => ({ ...current, system: { ...current.system, ready: false } }));
         }
+      } finally {
+        if (active) timer = window.setTimeout(poll, 1500);
       }
     }
 
     poll();
-    const timer = window.setInterval(poll, 1500);
     return () => {
       active = false;
-      window.clearInterval(timer);
+      window.clearTimeout(timer);
     };
   }, []);
 
-  return { status, error };
+  return { status, error, updatedAt };
 }

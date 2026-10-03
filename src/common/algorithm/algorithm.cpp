@@ -1,6 +1,7 @@
 #include "common/algorithm/algorithm.h"
 
 #include <math.h>
+#include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
 LOG_MODULE_REGISTER(algorithm, LOG_LEVEL_INF);
@@ -14,6 +15,7 @@ int Algorithm::Initialize(const AppConfig& config) {
     SetConfig(config);
     mLuxBaseline.Reset();
     mSoundBaseline.Reset();
+    mSoundFan.Reset();
     mPreviousTarget = {false, config.minBrightness, config.maxCCTMireds, false, 0, 0.0f};
     LOG_INF("Algorithm ready");
     return 0;
@@ -38,6 +40,7 @@ ControlTarget Algorithm::Evaluate(const SensorSnapshot& snapshot) {
 
     ControlTarget target = mPreviousTarget;
     target.sensoryScore = limitedScore;
+    const uint8_t fanPercent = mSoundFan.Evaluate(snapshot, mConfig, k_uptime_get_32());
 
     if (!snapshot.occupied) {
         target.lightOn = false;
@@ -59,10 +62,8 @@ ControlTarget Algorithm::Evaluate(const SensorSnapshot& snapshot) {
     target.cctMireds = ClampValue<uint16_t>(static_cast<uint16_t>(mConfig.minCCTMireds + (cctRange * normalized)),
                                             mConfig.minCCTMireds, mConfig.maxCCTMireds);
 
-    target.fanOn = limitedScore >= 1.5f;
-    target.fanPercent = target.fanOn ? ClampValue<uint8_t>(static_cast<uint8_t>(mConfig.fanMaxPercent * normalized), 10,
-                                                           mConfig.fanMaxPercent)
-                                     : 0;
+    target.fanPercent = fanPercent;
+    target.fanOn = fanPercent > 0;
 
     mPreviousTarget = target;
     return target;

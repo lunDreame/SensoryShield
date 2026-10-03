@@ -169,6 +169,7 @@ export function SettingsPage() {
         </div>
       </Panel>
       <Panel title="바람 세기" subtitle="자동으로 조절할 때 사용할 최대 바람 세기">
+        <p className="panel-subtitle">자동 모드는 지속 소음이 커지면 팬 속도를 낮춥니다. 현재 기준에서 한도가 18% 미만이면 자동 팬은 정지합니다. 실제 구동 기준은 보드 검증 후 조정됩니다.</p>
         <div className="settings-grid">
           {(["fanMaxPercent"] as Array<keyof AppConfig>).map((key) => (
             <label className="input-line" key={key}>
