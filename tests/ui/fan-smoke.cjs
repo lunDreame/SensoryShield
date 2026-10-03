@@ -24,7 +24,7 @@ const { chromium } = require(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES
   assert.equal(await slider.inputValue(),'60');
   await fan.getByRole('button',{name:'속도 적용'}).click();
   await fan.getByText('수동 제어 중',{exact:false}).waitFor();
-  await fan.getByText('동작 · 60%',{exact:true}).waitFor();
+  await page.waitForFunction(()=>document.querySelector('.fan-reading strong')?.textContent==='60');
   await fan.getByRole('button',{name:'정지',exact:true}).click();
   await fan.getByText('정지',{exact:true}).first().waitFor();
   await scenario('command-error');
@@ -40,7 +40,7 @@ const { chromium } = require(process.env.CODEX_PRIMARY_RUNTIME_NODE_MODULES
   await page.getByText('기기 연결됨',{exact:true}).waitFor();
   await page.getByText('측정 불가',{exact:true}).waitFor();
   await scenario('noise');
-  await fan.getByText('동작 · 18%',{exact:true}).waitFor();
+  await page.waitForFunction(()=>document.querySelector('.fan-reading strong')?.textContent==='18');
   await scenario('normal');
   await page.setViewportSize({width:375,height:812});
   await page.waitForTimeout(1800);
