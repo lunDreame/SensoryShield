@@ -1,0 +1,5 @@
+.sound-metric { gap: 8px; }
+.sound-input-track { height: 4px; border-radius: 4px; overflow: hidden; background: var(--line); }
+.sound-input-track > div { height: 100%; background: var(--blue); }
+.sound-metric small { color: var(--body); line-height: 1.5; overflow-wrap: anywhere; }
+.sound-metric-unavailable strong { font-size: 18px; color: var(--body); }

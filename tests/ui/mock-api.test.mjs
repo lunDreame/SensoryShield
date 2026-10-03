@@ -1,0 +1,35 @@
+import assert from 'node:assert/strict';
+import { mockApi } from '../../frontend/dev/mock-api.mjs';
+import { Readable } from 'node:stream';
+let middleware;
+mockApi().configureServer({middlewares:{use(fn){middleware=fn;}}});
+async function request(url, body) {
+  const req=Readable.from(body ? [JSON.stringify(body)] : []);
+  req.url=url;req.method=body ? 'POST' : 'GET';
+  let result;
+  const res={statusCode:200,setHeader(){},end(raw){result={status:this.statusCode,body:JSON.parse(raw)};}};
+  await middleware(req,res,()=>{throw Error('unexpected route');});
+  return result;
+}
+const status=await request('/api/status');
+assert.equal(status.body.outputs.fanPercent,30);
+await request('/api/fan',{power:true,speed:60});
+assert.equal((await request('/api/status')).body.outputs.fanPercent,60);
+assert.equal((await request('/api/status')).body.system.mode,'MANUAL');
+await request('/api/fan',{power:false,speed:0});
+assert.equal((await request('/api/status')).body.outputs.fanOn,false);
+await request('/__mock/scenario',{scenario:'noise'});
+assert.equal((await request('/api/status')).body.outputs.fanPercent,18);
+await request('/__mock/scenario',{scenario:'mic-error'});
+assert.equal((await request('/api/status')).body.sensor.micValid,false);
+await request('/__mock/scenario',{scenario:'vacant'});
+assert.equal((await request('/api/status')).body.outputs.fanOn,false);
+await request('/__mock/scenario',{scenario:'command-error'});
+assert.equal((await request('/api/fan',{power:true,speed:40})).status,503);
+await request('/__mock/scenario',{scenario:'offline'});
+assert.equal((await request('/api/status')).status,503);
+await request('/__mock/scenario',{scenario:'normal'});
+assert.equal((await request('/api/status')).status,200);
+await request('/api/profile',{fanMaxPercent:10});
+assert.equal((await request('/api/status')).body.outputs.fanPercent,0);
+console.log('Mock API scenarios passed');

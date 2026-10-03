@@ -151,6 +151,7 @@ export function SettingsPage() {
                 />
                 <em>{labels[key].unit}</em>
               </div>
+              {key === "soundWeight" ? <small style={{ color: "var(--body)", lineHeight: 1.6 }}>높을수록 소음 변화에 민감하게 반응합니다. 0%는 소음에 따른 팬 감속을 끕니다.</small> : null}
             </label>
           ))}
         </div>
@@ -168,7 +169,7 @@ export function SettingsPage() {
           ))}
         </div>
       </Panel>
-      <Panel title="바람 세기" subtitle="자동으로 조절할 때 사용할 최대 바람 세기">
+      <Panel title="바람 세기" subtitle="팬 속도의 명령 상한을 설정하세요.">
         <div className="settings-grid">
           {(["fanMaxPercent"] as Array<keyof AppConfig>).map((key) => (
             <label className="input-line" key={key}>
@@ -177,6 +178,7 @@ export function SettingsPage() {
                 <input type="number" min={0} max={100} value={inputValue(key)} onChange={(event) => changeInput(key, event.target.value)} />
                 <em>{labels[key].unit}</em>
               </div>
+              <small style={{ color: "var(--body)", lineHeight: 1.6 }}>0%는 자동 팬을 끕니다. 현재 최소 구동 기준은 18%이며, 그보다 낮은 한도에서는 자동 팬이 정지합니다.</small>
             </label>
           ))}
         </div>

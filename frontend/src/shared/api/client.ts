@@ -82,11 +82,7 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 2500): P
 }
 
 export async function getStatus(): Promise<StatusResponse> {
-  try {
-    return normalizeStatus(await request<RawStatusResponse>("/api/status", undefined, 1200));
-  } catch {
-    return fallbackStatus;
-  }
+  return normalizeStatus(await request<RawStatusResponse>("/api/status", undefined, 1200));
 }
 
 export function setMode(mode: ControlMode): Promise<{ ok: boolean }> {

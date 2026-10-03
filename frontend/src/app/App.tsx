@@ -8,7 +8,7 @@ type Route = "dashboard" | "settings" | "diagnostics";
 
 export function App() {
   const [route, setRoute] = useState<Route>("dashboard");
-  const { status } = useStatus();
+  const { status, error, updatedAt } = useStatus();
 
   return (
     <div className="app-shell">
@@ -19,10 +19,10 @@ export function App() {
           <button className={route === "diagnostics" ? "active" : ""} type="button" onClick={() => setRoute("diagnostics")}>기기 상태</button>
         </div>
         <span className={`connection-status${status.system.ready ? " is-ready" : ""}`} role="status">
-          <i className="connection-dot" />{status.system.ready ? "기기 연결됨" : "기기 연결 전"}
+          <i className="connection-dot" />{status.system.ready ? "기기 연결됨" : error ? "기기 연결 실패" : "기기 연결 전"}
         </span>
       </nav>
-      {route === "dashboard" ? <DashboardPage status={status} /> : null}
+      {route === "dashboard" ? <DashboardPage status={status} updatedAt={updatedAt} connectionError={error !== null} /> : null}
       {route === "settings" ? <SettingsPage /> : null}
       {route === "diagnostics" ? <DiagnosticsPage status={status} /> : null}
     </div>

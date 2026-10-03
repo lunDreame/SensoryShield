@@ -1,0 +1,32 @@
+/* Scoped to the sound/fan area; shared controls and light layout stay independent. */
+.fan-panel .panel-header { align-items: flex-start; }
+.fan-panel .fan-mode { flex-shrink: 0; background: var(--surface); color: var(--body); }
+.fan-current { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.fan-label { display: block; color: var(--body); font-size: 13px; font-weight: 700; }
+.fan-reading { display: flex; align-items: baseline; gap: 6px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+.fan-reading strong { color: var(--ink); font-size: 44px; line-height: 1; letter-spacing: -1px; }
+.fan-reading > span { color: var(--body); font-size: 18px; font-weight: 700; }
+.fan-power { display: flex; align-items: center; gap: 12px; }
+.fan-panel .fan-power .button { min-width: 66px; min-height: 44px; }
+.fan-mode-note { margin: 18px 0; color: var(--body); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; }
+.fan-draft { padding: 18px; border-radius: 12px; background: var(--page); border: 1px solid var(--line); }
+.fan-draft-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.fan-selection { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.fan-selection b { font-size: 20px; color: var(--blue-ink); font-variant-numeric: tabular-nums; }
+.fan-unsaved { padding: 3px 7px; border-radius: 6px; background: #fff0ce; color: #805400; font-size: 11px; font-weight: 700; }
+.fan-panel .fan-slider { margin: 18px 0 12px; }
+.fan-panel .fan-slider input { height: 36px; }
+.fan-panel .fan-slider input:disabled { cursor: not-allowed; opacity: .5; }
+.fan-range-labels { display: flex; justify-content: space-between; gap: 12px; color: var(--body); font-size: 11px; }
+.fan-help { margin: 15px 0 12px; color: var(--body); font-size: 12px; line-height: 1.6; }
+.fan-panel .fan-apply { width: 100%; min-height: 44px; }
+.fan-panel button:disabled { cursor: not-allowed; }
+.fan-feedback { margin: 14px 0 0; font-size: 12px; color: var(--body); line-height: 1.6; overflow-wrap: anywhere; }
+.fan-success { color: #008a58; }
+.fan-panel .inline-error.fan-feedback { color: #b42332; }
+@media (max-width: 420px) {
+  .fan-draft { padding: 14px; }
+  .fan-current { gap: 12px; }
+  .fan-power { flex-direction: column; align-items: flex-end; gap: 8px; }
+  .fan-reading strong { font-size: 40px; }
+}
