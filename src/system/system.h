@@ -9,7 +9,7 @@ class System final {
     static System& Instance();
 
     int Initialize();
-    int SetMode(ControlMode mode);
+    int SetMode(ControlMode mode, uint32_t overrideDurationMs = OVERRIDE_DURATION_MS);
     int SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMireds);
     int SetManualFan(bool on, uint8_t speedPercent);
     int UpdateConfig(const AppConfig& config);

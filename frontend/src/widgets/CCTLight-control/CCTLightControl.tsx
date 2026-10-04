@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { setLight, setMode } from "../../shared/api/client";
+import { TemporaryApplyActions } from "../../features/temporary-control/TemporaryApplyActions";
 import { describeKelvin } from "../../shared/lib/environment-labels";
 import { Panel } from "../../shared/ui/Panel";
 import type { ControlMode, OutputStatus } from "../../shared/types/domain";
@@ -25,7 +26,7 @@ export function CCTLightControl({ outputs, available, mode }: CCTLightControlPro
     }
   }, [outputs.brightnessPercent, outputs.cctMireds, dirty]);
 
-  async function commit(applyMode: "MANUAL" | "OVERRIDE", power = outputs.lightOn) {
+  async function commit(applyMode: "MANUAL" | "OVERRIDE", power = outputs.lightOn, durationMinutes = 15) {
     setPending(true);
     setError(null);
     setMessage(null);
@@ -33,11 +34,11 @@ export function CCTLightControl({ outputs, available, mode }: CCTLightControlPro
       const lightResult = await setLight({ power, brightness, cct });
       if (!lightResult.ok) throw new Error("rejected");
       if (applyMode === "OVERRIDE") {
-        const modeResult = await setMode("OVERRIDE");
+        const modeResult = await setMode("OVERRIDE", durationMinutes);
         if (!modeResult.ok) throw new Error("rejected");
       }
       setDirty(false);
-      setMessage(applyMode === "OVERRIDE" ? "이 조명을 15분간 사용한 뒤 개인 맞춤 자동으로 돌아가요." : "이 조명을 계속 유지해요. 자동으로 돌아가려면 작동 방식에서 선택해 주세요.");
+      setMessage(applyMode === "OVERRIDE" ? `이 조명을 ${durationMinutes}분간 사용한 뒤 개인 맞춤 자동으로 돌아가요.` : "이 조명을 계속 유지해요. 자동으로 돌아가려면 작동 방식에서 선택해 주세요.");
     } catch {
       setError("조명 명령을 보내지 못했어요. 기기 연결을 확인해 주세요.");
     } finally {
@@ -90,10 +91,8 @@ export function CCTLightControl({ outputs, available, mode }: CCTLightControlPro
       </label>
       <div className="control-caption"><span>따뜻하고 차분하게</span><span>하얗고 선명하게</span></div>
       <p className="control-apply-help">값을 선택한 뒤 적용 방식을 골라주세요.</p>
-      <div className="control-apply-actions">
-        <button className="button button-weak" type="button" disabled={pending || !available || !dirty} onClick={() => void commit("OVERRIDE", true)}>15분간 사용</button>
-        <button className="button button-primary" type="button" disabled={pending || !available || !dirty} onClick={() => void commit("MANUAL", true)}>계속 유지</button>
-      </div>
+      <TemporaryApplyActions disabled={!available || !dirty} pending={pending}
+        onApply={(applyMode, durationMinutes) => void commit(applyMode, true, durationMinutes)} />
       {message ? <p className="control-feedback" role="status">{message}</p> : null}
       {error ? <p className="inline-error" role="status">{error}</p> : null}
     </Panel>

@@ -57,7 +57,8 @@ export function mockApi() {
         }
         if (path === "/api/mode") {
           if (!["AUTO","MANUAL","OVERRIDE","SAFE"].includes(body.mode)) {send(400,{ok:false});return;}
-          mode=body.mode;overrideUntil=Date.now()+900000;send(200,{ok:true});return;
+          if (body.mode === "OVERRIDE" && (!Number.isInteger(body.durationMinutes) || body.durationMinutes < 1 || body.durationMinutes > 1440)) {send(400,{ok:false});return;}
+          mode=body.mode;overrideUntil=Date.now()+(body.durationMinutes ?? 15)*60000;send(200,{ok:true});return;
         }
         if (path === "/api/fan") {
           if (mode !== "MANUAL" && mode !== "OVERRIDE") {

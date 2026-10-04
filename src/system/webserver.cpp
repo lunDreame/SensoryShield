@@ -48,6 +48,7 @@ struct FanRequest {
 
 struct ModeRequest {
     const char* mode;
+    uint32_t durationMinutes;
 };
 
 struct ResetRequest {
@@ -86,6 +87,7 @@ static const struct json_obj_descr kFanFields[] = {
 };
 static const struct json_obj_descr kModeFields[] = {
     JSON_OBJ_DESCR_PRIM(ModeRequest, mode, JSON_TOK_STRING),
+    JSON_OBJ_DESCR_PRIM(ModeRequest, durationMinutes, JSON_TOK_NUMBER),
 };
 static const struct json_obj_descr kResetFields[] = {
     JSON_OBJ_DESCR_PRIM(ResetRequest, confirm, JSON_TOK_TRUE),
@@ -277,11 +279,11 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
             if (parsed != BIT_MASK(ARRAY_SIZE(kModeFields)) || payload.mode == nullptr) {
                 ret = -EINVAL;
             } else if (strcmp(payload.mode, "AUTO") == 0) {
-                ret = GetWebServer()->HandleModeCommand(ControlMode::Auto);
+                ret = GetWebServer()->HandleModeCommand(ControlMode::Auto, payload.durationMinutes);
             } else if (strcmp(payload.mode, "MANUAL") == 0) {
-                ret = GetWebServer()->HandleModeCommand(ControlMode::Manual);
+                ret = GetWebServer()->HandleModeCommand(ControlMode::Manual, payload.durationMinutes);
             } else if (strcmp(payload.mode, "OVERRIDE") == 0) {
-                ret = GetWebServer()->HandleModeCommand(ControlMode::Override);
+                ret = GetWebServer()->HandleModeCommand(ControlMode::Override, payload.durationMinutes);
             } else {
                 ret = -EINVAL;
             }
@@ -383,8 +385,11 @@ int WebServer::HandleFanCommand(bool on, uint8_t speedPercent) {
     return GetSystem()->SetManualFan(on, speedPercent);
 }
 
-int WebServer::HandleModeCommand(ControlMode mode) {
-    return GetSystem()->SetMode(mode);
+int WebServer::HandleModeCommand(ControlMode mode, uint32_t overrideDurationMinutes) {
+    if (mode == ControlMode::Override && (overrideDurationMinutes < 1U || overrideDurationMinutes > 1440U)) {
+        return -EINVAL;
+    }
+    return GetSystem()->SetMode(mode, overrideDurationMinutes * 60000U);
 }
 
 int WebServer::HandleProfileUpdate(const AppConfig& config) {

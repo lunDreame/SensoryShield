@@ -247,9 +247,9 @@ int System::StartMatterDispatch() {
     return 0;
 }
 
-int System::SetMode(ControlMode mode) {
+int System::SetMode(ControlMode mode, uint32_t overrideDurationMs) {
     if (mode == ControlMode::Override) {
-        mOverrideDeadlineMs = k_uptime_get() + OVERRIDE_DURATION_MS;
+        mOverrideDeadlineMs = k_uptime_get() + overrideDurationMs;
     } else {
         mOverrideDeadlineMs = 0;
     }
