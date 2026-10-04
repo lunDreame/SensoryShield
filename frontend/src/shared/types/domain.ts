@@ -49,4 +49,5 @@ export interface AppConfig {
   maxCCTMireds: number;
   fanMaxPercent: number;
   occupancyTimeoutMs: number;
+  profileConfigured: boolean;
 }

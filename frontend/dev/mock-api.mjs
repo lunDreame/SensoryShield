@@ -7,7 +7,8 @@ export function mockApi() {
   let overrideUntil = 0;
   const started = Date.now();
   let profile = { lightWeight: 0.55, soundWeight: 0.45, minBrightness: 5, maxBrightness: 85,
-    minCCTMireds: 250, maxCCTMireds: 454, fanMaxPercent: 80, occupancyTimeoutMs: 300000 };
+    minCCTMireds: 250, maxCCTMireds: 454, fanMaxPercent: 80, occupancyTimeoutMs: 300000,
+    profileConfigured: false };
   const scenarios = ["normal", "noise", "impulse", "mic-error", "vacant", "offline", "command-error"];
   const panel = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>Mock 시나리오</title>
   <body style="font:18px system-ui;max-width:700px;margin:50px auto;padding:20px"><h1>UI 시험 시나리오</h1>

@@ -63,6 +63,7 @@ struct ProfileRequest {
     uint16_t maxCCTMireds;
     uint8_t fanMaxPercent;
     uint32_t occupancyTimeoutMs;
+    bool profileConfigured;
 };
 
 struct StaticAsset {
@@ -98,6 +99,7 @@ static const struct json_obj_descr kProfileFields[] = {
     JSON_OBJ_DESCR_PRIM(ProfileRequest, maxCCTMireds, JSON_TOK_NUMBER),
     JSON_OBJ_DESCR_PRIM(ProfileRequest, fanMaxPercent, JSON_TOK_NUMBER),
     JSON_OBJ_DESCR_PRIM(ProfileRequest, occupancyTimeoutMs, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(ProfileRequest, profileConfigured, JSON_TOK_TRUE),
 };
 
 const struct http_header kCorsHeaders[] = {
@@ -236,7 +238,8 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
                                               payload.minCCTMireds,
                                               payload.maxCCTMireds,
                                               payload.fanMaxPercent,
-                                              payload.occupancyTimeoutMs};
+                                              payload.occupancyTimeoutMs,
+                                              payload.profileConfigured};
                     ret = GetWebServer()->HandleProfileUpdate(config);
                 }
                 context->requestLength = 0U;
@@ -430,10 +433,11 @@ int WebServer::BuildProfileJson(char* buffer, size_t bufferSize) const {
     const int written = snprintf(buffer, bufferSize,
                                  "{\"lightWeight\":%.3f,\"soundWeight\":%.3f,\"minBrightness\":%u,"
                                  "\"maxBrightness\":%u,\"minCCTMireds\":%u,\"maxCCTMireds\":%u,"
-                                 "\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u}",
+                                 "\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u,\"profileConfigured\":%s}",
                                  static_cast<double>(config.lightWeight), static_cast<double>(config.soundWeight),
                                  config.minBrightness, config.maxBrightness, config.minCCTMireds,
-                                 config.maxCCTMireds, config.fanMaxPercent, config.occupancyTimeoutMs);
+                                 config.maxCCTMireds, config.fanMaxPercent, config.occupancyTimeoutMs,
+                                 config.profileConfigured ? "true" : "false");
     return (written < 0 || static_cast<size_t>(written) >= bufferSize) ? -ENOMEM : 0;
 }
 
@@ -451,13 +455,14 @@ int WebServer::BuildDiagnosticsJson(char* buffer, size_t bufferSize) const {
                  "\"matter\":{\"commissioned\":%s,\"fabricCount\":%u,\"threadAttached\":%s},"
                  "\"profile\":{\"lightWeight\":%.3f,\"soundWeight\":%.3f,\"minBrightness\":%u,"
                  "\"maxBrightness\":%u,\"minCCTMireds\":%u,\"maxCCTMireds\":%u,"
-                 "\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u}}",
+                 "\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u,\"profileConfigured\":%s}}",
                  APP_NAME, k_uptime_get_32() / 1000U, snapshot.illuminanceValid ? "true" : "false",
                  snapshot.micValid ? "true" : "false", snapshot.pirValid ? "true" : "false",
                  GetMatterBridge()->Commissioned() ? "true" : "false", GetMatterBridge()->FabricCount(),
                  GetMatterBridge()->ThreadAttached() ? "true" : "false", static_cast<double>(config.lightWeight),
                  static_cast<double>(config.soundWeight), config.minBrightness, config.maxBrightness,
-                 config.minCCTMireds, config.maxCCTMireds, config.fanMaxPercent, config.occupancyTimeoutMs);
+                 config.minCCTMireds, config.maxCCTMireds, config.fanMaxPercent, config.occupancyTimeoutMs,
+                 config.profileConfigured ? "true" : "false");
 
     return (written < 0 || static_cast<size_t>(written) >= bufferSize) ? -ENOMEM : 0;
 }
