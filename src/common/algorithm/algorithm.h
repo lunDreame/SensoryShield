@@ -1,6 +1,7 @@
 #pragma once
 
 #include "common/algorithm/baseline.h"
+#include "common/algorithm/light_presence.h"
 #include "common/algorithm/sound_fan.h"
 #include "definition.h"
 
@@ -22,6 +23,7 @@ class Algorithm final {
     AppConfig mConfig = {};
     RollingBaseline mLuxBaseline;
     RollingBaseline mSoundBaseline;
+    LightPresenceController mLightPresence;
     SoundFanController mSoundFan;
     ControlTarget mPreviousTarget = {};
 };

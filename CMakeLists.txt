@@ -59,6 +59,7 @@ target_sources(app PRIVATE
     src/system/matter_bridge.cpp
     src/common/algorithm/algorithm.cpp
     src/common/algorithm/baseline.cpp
+    src/common/algorithm/light_presence.cpp
     src/common/device/device.cpp
     src/common/device/Light.cpp
     src/common/device/Fan.cpp
