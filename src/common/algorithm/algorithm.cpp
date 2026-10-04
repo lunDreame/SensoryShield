@@ -40,28 +40,12 @@ ControlTarget Algorithm::Evaluate(const SensorSnapshot& snapshot) {
 
     ControlTarget target = mPreviousTarget;
     target.sensoryScore = limitedScore;
+    const LightTarget light = mLightPresence.Evaluate(snapshot, mConfig, limitedScore);
     const uint8_t fanPercent = mSoundFan.Evaluate(snapshot, mConfig, k_uptime_get_32());
 
-    if (!snapshot.occupied) {
-        target.lightOn = false;
-        target.brightnessPercent = 0;
-        target.fanOn = false;
-        target.fanPercent = 0;
-        mPreviousTarget = target;
-        return target;
-    }
-
-    const float normalized = limitedScore / 8.0f;
-    const uint8_t brightnessRange = mConfig.maxBrightness - mConfig.minBrightness;
-    target.lightOn = true;
-    target.brightnessPercent =
-        ClampValue<uint8_t>(static_cast<uint8_t>(mConfig.maxBrightness - (brightnessRange * normalized)),
-                            mConfig.minBrightness, mConfig.maxBrightness);
-
-    const uint16_t cctRange = mConfig.maxCCTMireds - mConfig.minCCTMireds;
-    target.cctMireds = ClampValue<uint16_t>(static_cast<uint16_t>(mConfig.minCCTMireds + (cctRange * normalized)),
-                                            mConfig.minCCTMireds, mConfig.maxCCTMireds);
-
+    target.lightOn = light.on;
+    target.brightnessPercent = light.brightnessPercent;
+    target.cctMireds = light.cctMireds;
     target.fanPercent = fanPercent;
     target.fanOn = fanPercent > 0;
 
