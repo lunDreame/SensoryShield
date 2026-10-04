@@ -82,13 +82,16 @@ export function ProfileOnboarding({ initialConfig, onComplete }: ProfileOnboardi
     <main className="onboarding-shell">
       <section className="onboarding-card" aria-labelledby="onboarding-title">
         <div className="onboarding-brand"><span>S</span> SensoryShield</div>
-        <div className="onboarding-progress" aria-label={`${step + 1}단계, 전체 3단계`}>
-          {[0, 1, 2].map((index) => <i className={index <= step ? "active" : ""} key={index} />)}
+        <div className="onboarding-progress-row">
+          <div className="onboarding-progress" aria-label={`${step + 1}단계, 전체 3단계`}>
+            {[0, 1, 2].map((index) => <i className={index <= step ? "active" : ""} key={index} />)}
+          </div>
+          <span>{step + 1} / 3</span>
         </div>
 
         {step < 2 ? (
           <>
-            <span className="eyebrow">{questions[step].eyebrow}</span>
+            <span className="onboarding-kicker">나에게 맞는 환경 찾기</span>
             <h1 id="onboarding-title">{questions[step].title}</h1>
             <p className="onboarding-description">{questions[step].description}</p>
             <div className="choice-list">
@@ -108,7 +111,7 @@ export function ProfileOnboarding({ initialConfig, onComplete }: ProfileOnboardi
           </>
         ) : (
           <>
-            <span className="eyebrow">3 · 3</span>
+            <span className="onboarding-kicker">나에게 맞는 환경 찾기</span>
             <h1 id="onboarding-title">어떤 조명이 가장 편안한가요?</h1>
             <p className="onboarding-description">AUTO 모드가 사용할 밝기와 빛의 따뜻함 범위를 정해요. 나중에 설정에서 바꿀 수 있어요.</p>
             <div className="light-choice-grid">
@@ -121,8 +124,11 @@ export function ProfileOnboarding({ initialConfig, onComplete }: ProfileOnboardi
                   key={option.value}
                 >
                   <span className={`light-swatch ${option.swatch}`} />
-                  <b>{option.label}</b>
-                  <small>{option.description}</small>
+                  <span className="light-choice-copy">
+                    <b>{option.label}</b>
+                    <small>{option.description}</small>
+                  </span>
+                  <span className="choice-check" aria-hidden="true">✓</span>
                 </button>
               ))}
             </div>
