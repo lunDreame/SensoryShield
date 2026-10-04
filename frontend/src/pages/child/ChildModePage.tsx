@@ -2,7 +2,6 @@ import { useState } from "react";
 import { setFan, setLight, setMode } from "../../shared/api/client";
 import { formatDurationMinutes } from "../../shared/lib/duration";
 import type { StatusResponse } from "../../shared/types/domain";
-import { CalmHomeIcon, ComfortableIcon, QuietSoundIcon, SoftLightIcon } from "../../shared/ui/Icons";
 
 interface ChildModePageProps {
   status: StatusResponse;
@@ -11,7 +10,11 @@ interface ChildModePageProps {
 
 type ComfortAction = "BRIGHT" | "LOUD" | "COMFORTABLE";
 
-const durations = [10, 30, 60] as const;
+const durations = [
+  { minutes: 10, label: "잠깐" },
+  { minutes: 30, label: "조금 오래" },
+  { minutes: 60, label: "오래" }
+] as const;
 
 function roomMessage(status: StatusResponse) {
   if (!status.system.ready) return "기기를 기다리고 있어요";
@@ -74,7 +77,7 @@ export function ChildModePage({ status, connectionError }: ChildModePageProps) {
         <h1 id="child-room-title">{roomMessage(status)}</h1>
         <p>{status.system.ready ? "불편한 것이 있다면 아래에서 알려주세요." : connectionError ? "USB 연결을 확인해 주세요." : "연결되면 방의 상태를 알려드릴게요."}</p>
         <div className={`child-room-orb${status.system.ready && status.sensor.sensoryScore >= 5.6 ? " is-strong" : ""}`} aria-hidden="true">
-          <CalmHomeIcon />
+          <img src="/illustrations/child-at-home.png" alt="" />
         </div>
       </section>
 
@@ -85,12 +88,21 @@ export function ChildModePage({ status, connectionError }: ChildModePageProps) {
             <h2 id="child-choice-title">어떻게 느껴지나요?</h2>
           </div>
           <div className="child-duration" aria-label="편안한 환경 유지 시간">
-            <span>유지 시간</span>
+            <span>얼마 동안 편하게 할까요?</span>
             <div>
               {durations.map((duration) => (
-                <button className={durationMinutes === duration ? "active" : ""} type="button"
-                  aria-pressed={durationMinutes === duration} onClick={() => setDurationMinutes(duration)} key={duration}>
-                  {duration === 60 ? "1시간" : `${duration}분`}
+                <button className={durationMinutes === duration.minutes ? "active" : ""} type="button"
+                  aria-pressed={durationMinutes === duration.minutes} onClick={() => setDurationMinutes(duration.minutes)} key={duration.minutes}>
+                  <span className="duration-clock" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="8.5" />
+                      <path d="M12 7.5v5l3.25 2" />
+                    </svg>
+                  </span>
+                  <span><b>{duration.label}</b><small>{duration.minutes === 60 ? "1시간" : `${duration.minutes}분`}</small></span>
+                  <span className="duration-check" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" fill="none"><path d="m4 8.2 2.4 2.4L12 5.4" /></svg>
+                  </span>
                 </button>
               ))}
             </div>
@@ -99,15 +111,15 @@ export function ChildModePage({ status, connectionError }: ChildModePageProps) {
 
         <div className="child-choice-grid">
           <button className="child-choice child-choice-light" type="button" disabled={!status.system.ready || pending !== null} onClick={() => void apply("BRIGHT")}>
-            <span className="child-choice-icon" aria-hidden="true"><SoftLightIcon /></span>
+            <span className="child-choice-icon" aria-hidden="true"><img src="/illustrations/soft-light.png" alt="" /></span>
             <span><b>{pending === "BRIGHT" ? "바꾸는 중이에요" : "너무 밝아요"}</b><small>빛을 낮추고 따뜻하게</small></span>
           </button>
           <button className="child-choice child-choice-sound" type="button" disabled={!status.system.ready || pending !== null} onClick={() => void apply("LOUD")}>
-            <span className="child-choice-icon" aria-hidden="true"><QuietSoundIcon /></span>
+            <span className="child-choice-icon" aria-hidden="true"><img src="/illustrations/quiet-sound.png" alt="" /></span>
             <span><b>{pending === "LOUD" ? "바꾸는 중이에요" : "너무 시끄러워요"}</b><small>빛과 팬 소리를 편안하게</small></span>
           </button>
           <button className="child-choice child-choice-good" type="button" disabled={!status.system.ready || pending !== null} onClick={() => void apply("COMFORTABLE")}>
-            <span className="child-choice-icon" aria-hidden="true"><ComfortableIcon /></span>
+            <span className="child-choice-icon" aria-hidden="true"><img src="/illustrations/comfortable-home.png" alt="" /></span>
             <span><b>{pending === "COMFORTABLE" ? "돌아가는 중이에요" : "지금 좋아요"}</b><small>나에게 맞는 자동 환경으로</small></span>
           </button>
         </div>

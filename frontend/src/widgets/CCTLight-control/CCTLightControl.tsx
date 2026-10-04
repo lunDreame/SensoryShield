@@ -55,9 +55,10 @@ export function CCTLightControl({ outputs, available, mode }: CCTLightControlPro
 
   return (
     <Panel title="조명" subtitle="밝기와 빛 색깔을 조절합니다." className="control-panel"
-      action={<span className="badge">{{ AUTO: "자동", MANUAL: "수동", OVERRIDE: "잠시 사용", SAFE: "안전" }[mode]} 모드</span>}>
+      icon={<img className="panel-icon" src="/illustrations/light-control.png" alt="" />}
+      action={<span className={`badge mode-badge mode-${mode.toLowerCase()}`}>{{ AUTO: "자동", MANUAL: "수동", OVERRIDE: "잠시 사용", SAFE: "안전" }[mode]} 모드</span>}>
       <div className="control-row">
-        <span className={outputs.lightOn ? "badge badge-blue" : "badge"}>{outputs.lightOn ? "켜짐" : "꺼짐"}</span>
+        <span className={outputs.lightOn ? "badge badge-light-on" : "badge"}>{outputs.lightOn ? "켜짐" : "꺼짐"}</span>
         <button className="button button-weak" type="button" disabled={pending || !available} onClick={() => void commit("MANUAL", !outputs.lightOn)}>
           {outputs.lightOn ? "끄기" : "켜기"}
         </button>

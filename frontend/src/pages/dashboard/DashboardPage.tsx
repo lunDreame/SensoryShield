@@ -23,7 +23,7 @@ export function DashboardPage({ status, updatedAt, connectionError }: DashboardP
       {!status.system.ready ? <div className="notice connection-notice" role="status"><i className="notice-dot" />{connectionError ? updatedAt ? "기기 연결이 끊겼어요. 아래 값은 마지막 수신 상태이며 제어는 잠시 중지됩니다." : "기기에 연결할 수 없어요. 연결을 확인하면 자동으로 다시 시도합니다." : "기기와 연결되면 현재 환경을 보여드릴게요."}</div> : null}
       <section className="panel score-panel" aria-label="감각 점수">
         <div className="panel-header">
-          <div><h2>공간의 자극 정도</h2><p className="panel-subtitle">빛과 소리 변화 기준</p></div>
+          <div className="panel-title-group"><img className="panel-icon" src="/illustrations/sensory-status.png" alt="" /><div><h2>공간의 자극 정도</h2><p className="panel-subtitle">빛과 소리 변화 기준</p></div></div>
           <span className="badge" style={{ background: "#ffffff26", color: "#fff" }}>현재</span>
         </div>
         <div>
@@ -36,7 +36,7 @@ export function DashboardPage({ status, updatedAt, connectionError }: DashboardP
       <CCTLightControl outputs={status.outputs} available={status.system.ready} mode={status.system.mode} />
       <FanControl outputs={status.outputs} available={status.system.ready} mode={status.system.mode} />
       <section className="panel mode-panel">
-        <div className="panel-header"><div><h2>작동 방식</h2><p className="panel-subtitle">자동으로 맡기거나 직접 조절할 수 있어요.</p></div></div>
+        <div className="panel-header"><div className="panel-title-group"><img className="panel-icon" src="/illustrations/mode-control.png" alt="" /><div><h2>작동 방식</h2><p className="panel-subtitle">자동으로 맡기거나 직접 조절할 수 있어요.</p></div></div></div>
         <ModeSwitch mode={status.system.mode} available={status.system.ready} overrideRemainingSeconds={status.system.overrideRemainingSeconds} />
       </section>
     </main>

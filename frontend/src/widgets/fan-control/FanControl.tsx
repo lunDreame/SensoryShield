@@ -70,14 +70,15 @@ export function FanControl({ outputs, available, mode }: FanControlProps) {
 
   return (
     <Panel title="팬" subtitle="바람 세기를 확인하고 조절하세요." className="control-panel fan-panel"
-      action={<span className="badge fan-mode">{modeLabel} 모드</span>}>
+      icon={<img className="panel-icon" src="/illustrations/fan-control.png" alt="" />}
+      action={<span className={`badge fan-mode mode-badge mode-${mode.toLowerCase()}`}>{modeLabel} 모드</span>}>
       <div className="fan-current">
         <div>
           <span className="fan-label">{available ? "현재 속도" : "마지막 수신 속도"}</span>
           <div className="fan-reading"><strong>{outputs.fanOn ? outputs.fanPercent : 0}</strong><span>%</span></div>
         </div>
         <div className="fan-power">
-          <span className={outputs.fanOn ? "badge badge-blue" : "badge"}>{outputs.fanOn ? "동작 중" : "정지"}</span>
+          <span className={outputs.fanOn ? "badge badge-fan-on" : "badge"}>{outputs.fanOn ? "동작 중" : "정지"}</span>
           <button className="button button-weak" type="button"
             disabled={pending || !available || (!outputs.fanOn && !canStart)}
             onClick={() => void commit(!outputs.fanOn)}>
