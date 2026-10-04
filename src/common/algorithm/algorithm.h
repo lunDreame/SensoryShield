@@ -1,8 +1,8 @@
 #pragma once
 
-#include "common/algorithm/baseline.h"
 #include "common/algorithm/light_presence.h"
 #include "common/algorithm/sound_fan.h"
+#include "common/algorithm/stimulus_score.h"
 #include "definition.h"
 
 class Algorithm final {
@@ -21,8 +21,7 @@ class Algorithm final {
     ~Algorithm() = default;
 
     AppConfig mConfig = {};
-    RollingBaseline mLuxBaseline;
-    RollingBaseline mSoundBaseline;
+    StimulusScorer mStimulusScorer;
     LightPresenceController mLightPresence;
     SoundFanController mSoundFan;
     ControlTarget mPreviousTarget = {};

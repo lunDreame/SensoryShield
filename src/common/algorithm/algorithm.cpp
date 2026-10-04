@@ -1,6 +1,5 @@
 #include "common/algorithm/algorithm.h"
 
-#include <math.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
@@ -13,8 +12,7 @@ Algorithm& Algorithm::Instance() {
 
 int Algorithm::Initialize(const AppConfig& config) {
     SetConfig(config);
-    mLuxBaseline.Reset();
-    mSoundBaseline.Reset();
+    mStimulusScorer.Reset();
     mSoundFan.Reset();
     mPreviousTarget = {false, config.minBrightness, config.maxCCTMireds, false, 0, 0.0f};
     LOG_INF("Algorithm ready");
@@ -26,21 +24,11 @@ void Algorithm::SetConfig(const AppConfig& config) {
 }
 
 ControlTarget Algorithm::Evaluate(const SensorSnapshot& snapshot) {
-    if (snapshot.illuminanceValid) {
-        mLuxBaseline.Add(snapshot.lux);
-    }
-    if (snapshot.sound.valid) {
-        mSoundBaseline.Add(snapshot.sound.energy);
-    }
-
-    const float lightResidual = snapshot.illuminanceValid ? mLuxBaseline.Residual(snapshot.lux) : 0.0f;
-    const float soundResidual = snapshot.sound.valid ? mSoundBaseline.Residual(snapshot.sound.energy) : 0.0f;
-    const float score = (mConfig.lightWeight * lightResidual) + (mConfig.soundWeight * soundResidual);
-    const float limitedScore = ClampValue(score, 0.0f, 8.0f);
+    const StimulusScore stimulus = mStimulusScorer.Evaluate(snapshot, mConfig);
 
     ControlTarget target = mPreviousTarget;
-    target.sensoryScore = limitedScore;
-    const LightTarget light = mLightPresence.Evaluate(snapshot, mConfig, limitedScore);
+    target.sensoryScore = stimulus.combined;
+    const LightTarget light = mLightPresence.Evaluate(snapshot, mConfig, stimulus.combined);
     const uint8_t fanPercent = mSoundFan.Evaluate(snapshot, mConfig, k_uptime_get_32());
 
     target.lightOn = light.on;
