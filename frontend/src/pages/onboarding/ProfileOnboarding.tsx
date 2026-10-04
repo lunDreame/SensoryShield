@@ -81,7 +81,9 @@ export function ProfileOnboarding({ initialConfig, onComplete }: ProfileOnboardi
   return (
     <main className="onboarding-shell">
       <section className="onboarding-card" aria-labelledby="onboarding-title">
-        <div className="onboarding-brand"><span>S</span> SensoryShield</div>
+        <div className="onboarding-brand">
+          <img src="/brand/sensoryshield-logo.png" alt="SensoryShield" />
+        </div>
         <div className="onboarding-progress-row">
           <div className="onboarding-progress" aria-label={`${step + 1}단계, 전체 3단계`}>
             {[0, 1, 2].map((index) => <i className={index <= step ? "active" : ""} key={index} />)}
