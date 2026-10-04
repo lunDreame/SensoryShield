@@ -121,6 +121,8 @@ button:disabled { cursor: wait; opacity: .58; }
 .settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px 24px; }
 .input-line { display: grid; gap: 8px; min-width: 0; }
 .input-line > span { color: var(--body); font-size: 13px; font-weight: 700; }
+.setting-meaning { color: var(--body); font-size: 12px; line-height: 1.6; }
+.setting-meaning b { color: var(--blue-ink); font-weight: 800; }
 .field-with-unit { display: flex; align-items: center; min-height: 44px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
 .field-with-unit:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px #3182f61c; }
 .field-with-unit input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; padding: 0 12px; color: var(--ink); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }

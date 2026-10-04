@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { getProfile, saveProfile } from "../../shared/api/client";
+import { describeKelvin, describeSensitivity } from "../../shared/lib/environment-labels";
 import { Panel } from "../../shared/ui/Panel";
 import type { AppConfig } from "../../shared/types/domain";
 
@@ -18,14 +19,14 @@ const initialConfig: AppConfig = {
 type EditableConfigKey = Exclude<keyof AppConfig, "profileConfigured">;
 
 const labels: Record<EditableConfigKey, { title: string; unit: string }> = {
-  lightWeight: { title: "빛 반영 정도", unit: "%" },
-  soundWeight: { title: "소리 반영 정도", unit: "%" },
-  minBrightness: { title: "최소 밝기", unit: "%" },
-  maxBrightness: { title: "최대 밝기", unit: "%" },
-  minCCTMireds: { title: "차가운 빛 색온도", unit: "K" },
-  maxCCTMireds: { title: "따뜻한 빛 색온도", unit: "K" },
+  lightWeight: { title: "빛 변화 민감도", unit: "%" },
+  soundWeight: { title: "소음 변화 민감도", unit: "%" },
+  minBrightness: { title: "가장 낮은 자동 밝기", unit: "%" },
+  maxBrightness: { title: "가장 높은 자동 밝기", unit: "%" },
+  minCCTMireds: { title: "가장 선명한 빛", unit: "K" },
+  maxCCTMireds: { title: "가장 따뜻한 빛", unit: "K" },
   fanMaxPercent: { title: "바람 세기 한도", unit: "%" },
-  occupancyTimeoutMs: { title: "사람이 없을 때 유지", unit: "초" }
+  occupancyTimeoutMs: { title: "자동 제어 유지 시간", unit: "분" }
 };
 
 export function SettingsPage() {
@@ -52,7 +53,7 @@ export function SettingsPage() {
   }, []);
 
   function displayValue(key: EditableConfigKey) {
-    if (key === "occupancyTimeoutMs") return config[key] / 1000;
+    if (key === "occupancyTimeoutMs") return config[key] / 60000;
     if (key === "minCCTMireds" || key === "maxCCTMireds") return Math.round(1_000_000 / config[key]);
     if (key === "lightWeight" || key === "soundWeight") return Math.round(config[key] * 100);
     return config[key];
@@ -60,7 +61,7 @@ export function SettingsPage() {
 
   function update(key: EditableConfigKey, value: number) {
     const storedValue = key === "occupancyTimeoutMs"
-      ? value * 1000
+      ? value * 60000
       : key === "minCCTMireds" || key === "maxCCTMireds"
         ? Math.round(1_000_000 / value)
         : key === "lightWeight" || key === "soundWeight"
@@ -104,8 +105,8 @@ export function SettingsPage() {
       setError("밝기와 바람 세기는 0에서 100% 사이로 설정해 주세요.");
       return;
     }
-    if (config.occupancyTimeoutMs < 1000 || config.occupancyTimeoutMs > 86400000) {
-      setError("유지 시간은 1초에서 24시간 사이로 설정해 주세요.");
+    if (config.occupancyTimeoutMs < 60000 || config.occupancyTimeoutMs > 86400000) {
+      setError("유지 시간은 1분에서 24시간 사이로 설정해 주세요.");
       return;
     }
     if (config.minCCTMireds > config.maxCCTMireds) {
@@ -113,7 +114,7 @@ export function SettingsPage() {
       return;
     }
     if (config.minCCTMireds < 250 || config.maxCCTMireds > 454) {
-      setError("색온도는 2,203K에서 4,000K 사이로 설정해 주세요.");
+      setError("빛의 따뜻함은 2,203K에서 4,000K 사이로 설정해 주세요.");
       return;
     }
 
@@ -138,7 +139,7 @@ export function SettingsPage() {
           <p>공간에 맞게 조명과 바람의 범위를 정해보세요.</p>
         </div>
       </section>
-      <Panel title="빛과 소리 반응" subtitle="자동 조절에서 빛과 소리를 반영하는 정도">
+      <Panel title="자동 반응 민감도" subtitle="평소와 다른 빛과 소리를 감지했을 때 조명이 반응하는 정도">
         <div className="settings-grid">
           {(["lightWeight", "soundWeight"] as EditableConfigKey[]).map((key) => (
             <label className="input-line" key={key}>
@@ -154,12 +155,15 @@ export function SettingsPage() {
                 />
                 <em>{labels[key].unit}</em>
               </div>
-              {key === "soundWeight" ? <small style={{ color: "var(--body)", lineHeight: 1.6 }}>높을수록 소음 변화에 민감하게 반응합니다. 0%는 소음에 따른 팬 감속을 끕니다.</small> : null}
+              <small className="setting-meaning">
+                <b>{describeSensitivity(Number(displayValue(key)))}</b>
+                {key === "lightWeight" ? " · 높을수록 주변 밝기 변화에 조명이 더 빠르게 반응해요." : " · 높을수록 소음 변화가 조명과 팬 제어에 더 크게 반영돼요."}
+              </small>
             </label>
           ))}
         </div>
       </Panel>
-      <Panel title="조명 범위" subtitle="자동 제어에서 사용할 밝기와 색온도">
+      <Panel title="자동 조명 범위" subtitle="자동 모드가 조절할 수 있는 가장 어두운 값과 가장 밝은 값">
         <div className="settings-grid">
           {(["minBrightness", "maxBrightness", "minCCTMireds", "maxCCTMireds"] as EditableConfigKey[]).map((key) => (
             <label className="input-line" key={key}>
@@ -168,6 +172,7 @@ export function SettingsPage() {
                 <input type="number" min={key.includes("Brightness") ? 0 : key.includes("CCT") ? 2203 : 1} max={key.includes("Brightness") ? 100 : key.includes("CCT") ? 4000 : 1000} step={key.includes("CCT") ? 100 : 1} value={inputValue(key)} onChange={(event) => changeInput(key, event.target.value)} />
                 <em>{labels[key].unit}</em>
               </div>
+              {key.includes("CCT") ? <small className="setting-meaning"><b>{describeKelvin(Number(displayValue(key)))}</b> · 숫자가 낮을수록 노란빛, 높을수록 흰빛에 가까워요.</small> : <small className="setting-meaning">AUTO 모드에서도 이 범위를 벗어나지 않아요.</small>}
             </label>
           ))}
         </div>
@@ -186,14 +191,15 @@ export function SettingsPage() {
           ))}
         </div>
       </Panel>
-      <Panel title="사람이 없을 때" subtitle="움직임이 감지되지 않은 뒤에도 자동 조절을 유지하는 시간">
+      <Panel title="사람이 없을 때" subtitle="마지막 움직임이 감지된 뒤 조명과 팬을 유지하는 시간">
         <div className="settings-grid">
           <label className="input-line">
             <span>{labels.occupancyTimeoutMs.title}</span>
             <div className="field-with-unit">
-              <input type="number" min={1} max={86400} value={inputValue("occupancyTimeoutMs")} onChange={(event) => changeInput("occupancyTimeoutMs", event.target.value)} />
+              <input type="number" min={1} max={1440} value={inputValue("occupancyTimeoutMs")} onChange={(event) => changeInput("occupancyTimeoutMs", event.target.value)} />
               <em>{labels.occupancyTimeoutMs.unit}</em>
             </div>
+            <small className="setting-meaning">이 시간이 지나면 사람이 없는 것으로 판단해 자동으로 조명과 팬을 정지해요.</small>
           </label>
         </div>
       </Panel>
