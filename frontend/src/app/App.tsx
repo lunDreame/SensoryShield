@@ -57,7 +57,7 @@ export function App() {
               <img src="/illustrations/child-avatar.png" alt="" /><span><b>아이</b><small>쉬운 조작</small></span>
             </button>
             <button className={viewMode === "guardian" ? "active" : ""} type="button" aria-pressed={viewMode === "guardian"} onClick={() => changeViewMode("guardian")}>
-              <img src="/illustrations/adult-avatar.png" alt="" /><span><b>어른</b><small>자세히 보기</small></span>
+              <img src="/illustrations/adult-avatar.png" alt="" /><span><b>보호자</b><small>상세 관리</small></span>
             </button>
           </div>
           <span className={`connection-status${status.system.ready ? " is-ready" : ""}`} role="status">

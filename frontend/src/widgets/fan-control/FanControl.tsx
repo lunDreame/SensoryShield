@@ -70,6 +70,7 @@ export function FanControl({ outputs, available, mode }: FanControlProps) {
 
   return (
     <Panel title="팬" subtitle="바람 세기를 확인하고 조절하세요." className="control-panel fan-panel"
+      icon={<img className="panel-icon" src="/illustrations/fan-control.png" alt="" />}
       action={<span className="badge fan-mode">{modeLabel} 모드</span>}>
       <div className="fan-current">
         <div>
