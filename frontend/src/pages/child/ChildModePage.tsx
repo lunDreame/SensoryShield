@@ -10,7 +10,11 @@ interface ChildModePageProps {
 
 type ComfortAction = "BRIGHT" | "LOUD" | "COMFORTABLE";
 
-const durations = [10, 30, 60] as const;
+const durations = [
+  { minutes: 10, label: "잠깐" },
+  { minutes: 30, label: "조금 오래" },
+  { minutes: 60, label: "오래" }
+] as const;
 
 function roomMessage(status: StatusResponse) {
   if (!status.system.ready) return "기기를 기다리고 있어요";
@@ -84,12 +88,14 @@ export function ChildModePage({ status, connectionError }: ChildModePageProps) {
             <h2 id="child-choice-title">어떻게 느껴지나요?</h2>
           </div>
           <div className="child-duration" aria-label="편안한 환경 유지 시간">
-            <span>유지 시간</span>
+            <span>얼마 동안 편하게 할까요?</span>
             <div>
               {durations.map((duration) => (
-                <button className={durationMinutes === duration ? "active" : ""} type="button"
-                  aria-pressed={durationMinutes === duration} onClick={() => setDurationMinutes(duration)} key={duration}>
-                  {duration === 60 ? "1시간" : `${duration}분`}
+                <button className={durationMinutes === duration.minutes ? "active" : ""} type="button"
+                  aria-pressed={durationMinutes === duration.minutes} onClick={() => setDurationMinutes(duration.minutes)} key={duration.minutes}>
+                  <span className="duration-clock" aria-hidden="true"><i /></span>
+                  <span><b>{duration.label}</b><small>{duration.minutes === 60 ? "1시간" : `${duration.minutes}분`}</small></span>
+                  <span className="duration-check" aria-hidden="true">✓</span>
                 </button>
               ))}
             </div>
