@@ -53,20 +53,21 @@ export function ModeSwitch({ mode, available, overrideRemainingSeconds }: ModeSw
     <div className="segmented" role="group" aria-label="제어 모드" aria-describedby="mode-description">
       {modes.map((item) => (
         <button
-          className={item === mode ? "active" : ""}
+          className={`mode-option mode-${item.toLowerCase()}${item === mode ? " active" : ""}`}
           disabled={pending !== null || !available || item === "SAFE" || item === mode}
           key={item}
           type="button"
           aria-pressed={item === mode}
           onClick={() => void changeMode(item)}
         >
-          {pending === item ? "변경 중" : labels[item]}
+          <span className="mode-dot" aria-hidden="true" />{pending === item ? "변경 중" : labels[item]}
         </button>
       ))}
     </div>
-    <p id="mode-description" className="panel-subtitle" style={{ marginTop: 12 }}>
-      {available ? mode === "OVERRIDE" ? `현재 설정을 약 ${formatRemainingSeconds(overrideRemainingSeconds)} 더 유지한 뒤 개인 맞춤 자동으로 돌아갑니다.` : descriptions[mode] : "연결 후 작동 방식을 확인하고 변경할 수 있어요."}
-    </p>
+    <div id="mode-description" className={`mode-description mode-${mode.toLowerCase()}`}>
+      <b>{available ? `현재 ${labels[mode]} 모드` : "작동 방식 확인 대기"}</b>
+      <p>{available ? mode === "OVERRIDE" ? `현재 설정을 약 ${formatRemainingSeconds(overrideRemainingSeconds)} 더 유지한 뒤 개인 맞춤 자동으로 돌아갑니다.` : descriptions[mode] : "연결 후 작동 방식을 확인하고 변경할 수 있어요."}</p>
+    </div>
     {available && (mode === "MANUAL" || mode === "OVERRIDE") ? <button className="button button-weak mode-return" type="button" disabled={pending !== null} onClick={() => void changeMode("AUTO")}>개인 맞춤 자동으로 돌아가기</button> : null}
     {message && available ? <p className="panel-subtitle" role="status" style={{ marginTop: 8 }}>{message}</p> : null}
     {error ? <p className="inline-error" role="alert">{error}</p> : null}
