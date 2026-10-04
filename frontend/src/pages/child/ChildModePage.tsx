@@ -93,9 +93,16 @@ export function ChildModePage({ status, connectionError }: ChildModePageProps) {
               {durations.map((duration) => (
                 <button className={durationMinutes === duration.minutes ? "active" : ""} type="button"
                   aria-pressed={durationMinutes === duration.minutes} onClick={() => setDurationMinutes(duration.minutes)} key={duration.minutes}>
-                  <span className="duration-clock" aria-hidden="true"><i /></span>
+                  <span className="duration-clock" aria-hidden="true">
+                    <svg viewBox="0 0 24 24" fill="none">
+                      <circle cx="12" cy="12" r="8.5" />
+                      <path d="M12 7.5v5l3.25 2" />
+                    </svg>
+                  </span>
                   <span><b>{duration.label}</b><small>{duration.minutes === 60 ? "1시간" : `${duration.minutes}분`}</small></span>
-                  <span className="duration-check" aria-hidden="true">✓</span>
+                  <span className="duration-check" aria-hidden="true">
+                    <svg viewBox="0 0 16 16" fill="none"><path d="m4 8.2 2.4 2.4L12 5.4" /></svg>
+                  </span>
                 </button>
               ))}
             </div>

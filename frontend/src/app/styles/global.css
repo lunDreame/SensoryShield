@@ -245,17 +245,18 @@ button:disabled { cursor: wait; opacity: .58; }
 .child-duration { display: grid; gap: 8px; justify-items: end; }
 .child-duration > span { color: #667085; font-size: 12px; font-weight: 800; }
 .child-duration > div { display: grid; grid-template-columns: repeat(3, minmax(96px, 1fr)); gap: 7px; }
-.child-duration button { position: relative; display: grid; min-height: 62px; grid-template-columns: 24px 1fr; align-items: center; gap: 8px; border: 1px solid #e2e7ee; border-radius: 13px; background: #f8f9fb; color: var(--body); padding: 8px 12px; text-align: left; }
+.child-duration button { position: relative; display: grid; min-height: 62px; grid-template-columns: 26px minmax(0, 1fr); align-items: center; gap: 8px; border: 1px solid #e2e7ee; border-radius: 13px; background: #f8f9fb; color: var(--body); padding: 8px 28px 8px 11px; text-align: left; }
 .child-duration button:hover { border-color: #bfcfe6; background: #f5f8fd; }
 .child-duration button.active { border-color: #8fb5ea; background: #edf4ff; color: #243b68; box-shadow: 0 0 0 2px #8fb5ea24; }
-.duration-clock { position: relative; display: block; width: 23px; height: 23px; border: 2px solid #7c91ae; border-radius: 50%; }
-.duration-clock::before, .duration-clock i { position: absolute; left: 10px; top: 4px; width: 2px; height: 7px; border-radius: 99px; background: currentColor; content: ""; transform-origin: 1px 7px; }
-.duration-clock i { top: 10px; height: 6px; transform: rotate(125deg); }
+.duration-clock { display: grid; width: 26px; height: 26px; place-items: center; border-radius: 9px; background: #fff; color: #637b9c; box-shadow: inset 0 0 0 1px #dbe4ef; }
+.duration-clock svg { width: 21px; height: 21px; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.child-duration button.active .duration-clock { background: #fff; color: #3f6fae; box-shadow: inset 0 0 0 1px #c8d9ef; }
 .child-duration button > span:nth-child(2) { display: grid; gap: 2px; }
 .child-duration button b { font-size: 12px; line-height: 1.2; white-space: nowrap; }
 .child-duration button small { color: #7c8798; font-size: 10px; font-weight: 700; }
-.duration-check { position: absolute; right: 6px; top: 6px; display: grid; width: 16px; height: 16px; place-items: center; border-radius: 50%; background: #719fe0; color: #fff; font-size: 9px; font-weight: 900; opacity: 0; transform: scale(.7); transition: opacity 140ms ease, transform 140ms ease; }
-.child-duration button.active .duration-check { opacity: 1; transform: scale(1); }
+.duration-check { position: absolute; right: 8px; top: 50%; display: grid; width: 16px; height: 16px; place-items: center; border-radius: 50%; background: #719fe0; color: #fff; font-size: 9px; font-weight: 900; opacity: 0; transform: translateY(-50%) scale(.7); transition: opacity 140ms ease, transform 140ms ease; }
+.duration-check svg { width: 12px; height: 12px; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.child-duration button.active .duration-check { opacity: 1; transform: translateY(-50%) scale(1); }
 .child-choice-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .child-choice { position: relative; display: grid; min-width: 0; min-height: 196px; align-content: space-between; overflow: hidden; border: 1px solid transparent; border-radius: 22px; padding: 22px; text-align: left; transition: transform 150ms ease, border-color 150ms ease, box-shadow 150ms ease; }
 .child-choice:hover { transform: translateY(-2px); box-shadow: 0 12px 30px #34405412; }
