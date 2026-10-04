@@ -18,7 +18,10 @@ export function DashboardPage({ status, updatedAt, connectionError }: DashboardP
           <h1>우리 집 환경</h1>
           <p>조명과 바람을 조절하고 공간 상태를 살펴보세요.</p>
         </div>
-        <time>{updatedAt ? `${new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(updatedAt)} 수신` : "측정값 수신 대기"}</time>
+        <div className="guardian-overview-visual">
+          <img src="/illustrations/adult-at-home.png" alt="" />
+          <time>{updatedAt ? `${new Intl.DateTimeFormat("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(updatedAt)} 수신` : "측정값 수신 대기"}</time>
+        </div>
       </section>
       {!status.system.ready ? <div className="notice connection-notice" role="status"><i className="notice-dot" />{connectionError ? updatedAt ? "기기 연결이 끊겼어요. 아래 값은 마지막 수신 상태이며 제어는 잠시 중지됩니다." : "기기에 연결할 수 없어요. 연결을 확인하면 자동으로 다시 시도합니다." : "기기와 연결되면 현재 환경을 보여드릴게요."}</div> : null}
       <section className="panel score-panel" aria-label="감각 점수">
