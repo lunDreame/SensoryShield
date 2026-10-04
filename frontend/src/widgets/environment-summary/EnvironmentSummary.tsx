@@ -1,6 +1,7 @@
 import "./sound-metric.css";
 import { Metric } from "../../shared/ui/Metric";
 import { Panel } from "../../shared/ui/Panel";
+import { describeLightLevel } from "../../shared/lib/environment-labels";
 import type { SensorStatus } from "../../shared/types/domain";
 
 interface EnvironmentSummaryProps {
@@ -14,7 +15,7 @@ export function EnvironmentSummary({ sensor }: EnvironmentSummaryProps) {
   return (
     <Panel title="환경 상태" subtitle="지금 공간에서 측정한 값" className="environment-panel">
       <div className="metric-grid">
-        <Metric label="주변 밝기" value={sensor.illuminanceValid ? `${sensor.lux.toFixed(0)} lx` : "연결 대기"} detail={sensor.illuminanceValid ? "현재 측정값" : "기기 연결 후 표시돼요"} />
+        <Metric label="주변 밝기" value={sensor.illuminanceValid ? `${sensor.lux.toFixed(0)} lx` : "연결 대기"} detail={sensor.illuminanceValid ? describeLightLevel(sensor.lux) : "기기 연결 후 표시돼요"} />
         <Metric label="사람 움직임" value={sensor.pirValid ? (sensor.occupied ? "감지했어요" : "감지되지 않아요") : "연결 대기"} detail={sensor.pirValid ? "현재 상태" : "기기 연결 후 표시돼요"} />
         <div className={`metric sound-metric${soundValid ? "" : " sound-metric-unavailable"}`}>
           <span>주변 소리</span>

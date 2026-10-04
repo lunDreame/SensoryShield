@@ -1,5 +1,6 @@
 import { useEffect, useState, type CSSProperties } from "react";
 import { setLight } from "../../shared/api/client";
+import { describeKelvin } from "../../shared/lib/environment-labels";
 import { Panel } from "../../shared/ui/Panel";
 import type { OutputStatus } from "../../shared/types/domain";
 
@@ -62,7 +63,7 @@ export function CCTLightControl({ outputs, available }: CCTLightControlProps) {
       </label>
       <div className="control-caption"><span>은은하게</span><span>밝게</span></div>
       <label className="slider">
-        빛 색깔
+        빛의 따뜻함
         <input
           max={4000}
           min={2200}
@@ -75,9 +76,9 @@ export function CCTLightControl({ outputs, available }: CCTLightControlProps) {
           onPointerUp={() => commit(true)}
           onKeyUp={() => void commit(true)}
         />
-        <b className="control-value">{kelvin.toLocaleString()} K</b>
+        <b className="control-value">{describeKelvin(kelvin)} · {kelvin.toLocaleString()} K</b>
       </label>
-      <div className="control-caption"><span>따뜻하게</span><span>밝고 선명하게</span></div>
+      <div className="control-caption"><span>따뜻하고 차분하게</span><span>하얗고 선명하게</span></div>
       {error ? <p className="inline-error" role="status">{error}</p> : null}
     </Panel>
   );
