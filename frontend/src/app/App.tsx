@@ -1,14 +1,32 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { DashboardPage } from "../pages/dashboard/DashboardPage";
 import { DiagnosticsPage } from "../pages/diagnostics/DiagnosticsPage";
+import { ProfileOnboarding } from "../pages/onboarding/ProfileOnboarding";
 import { SettingsPage } from "../pages/settings/SettingsPage";
+import { getProfile } from "../shared/api/client";
 import { useStatus } from "../shared/hooks/useStatus";
+import type { AppConfig } from "../shared/types/domain";
 
 type Route = "dashboard" | "settings" | "diagnostics";
 
 export function App() {
   const [route, setRoute] = useState<Route>("dashboard");
+  const [profile, setProfile] = useState<AppConfig | null>(null);
+  const [profileChecked, setProfileChecked] = useState(false);
   const { status, error, updatedAt } = useStatus();
+
+  useEffect(() => {
+    let active = true;
+    void getProfile()
+      .then((stored) => { if (active) setProfile(stored); })
+      .catch(() => { /* The regular connection state explains an unavailable device. */ })
+      .finally(() => { if (active) setProfileChecked(true); });
+    return () => { active = false; };
+  }, []);
+
+  if (profileChecked && profile && !profile.profileConfigured) {
+    return <ProfileOnboarding initialConfig={profile} onComplete={setProfile} />;
+  }
 
   return (
     <div className="app-shell">
