@@ -3,7 +3,7 @@
 #include <stdint.h>
 
 #define APP_NAME "SensoryShield"
-#define CONFIG_VERSION 0x00030000
+#define CONFIG_VERSION 0x00040000
 
 #define SENSOR_PERIOD_MS 200
 #define ALGORITHM_PERIOD_MS 250
@@ -32,6 +32,7 @@ struct AppConfig {
     uint16_t maxCCTMireds = 454;
     uint8_t fanMaxPercent = 80;
     uint32_t occupancyTimeoutMs = OCCUPANCY_TIMEOUT_MS;
+    bool profileConfigured = false;
 };
 
 struct ChildDeviceDescriptor {

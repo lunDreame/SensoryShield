@@ -11,10 +11,13 @@ const initialConfig: AppConfig = {
   minCCTMireds: 250,
   maxCCTMireds: 454,
   fanMaxPercent: 80,
-  occupancyTimeoutMs: 300000
+  occupancyTimeoutMs: 300000,
+  profileConfigured: true
 };
 
-const labels: Record<keyof AppConfig, { title: string; unit: string }> = {
+type EditableConfigKey = Exclude<keyof AppConfig, "profileConfigured">;
+
+const labels: Record<EditableConfigKey, { title: string; unit: string }> = {
   lightWeight: { title: "빛 반영 정도", unit: "%" },
   soundWeight: { title: "소리 반영 정도", unit: "%" },
   minBrightness: { title: "최소 밝기", unit: "%" },
@@ -27,7 +30,7 @@ const labels: Record<keyof AppConfig, { title: string; unit: string }> = {
 
 export function SettingsPage() {
   const [config, setConfig] = useState(initialConfig);
-  const [drafts, setDrafts] = useState<Partial<Record<keyof AppConfig, string>>>({});
+  const [drafts, setDrafts] = useState<Partial<Record<EditableConfigKey, string>>>({});
   const [state, setState] = useState("변경 사항 없음");
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,14 +51,14 @@ export function SettingsPage() {
     return () => { active = false; };
   }, []);
 
-  function displayValue(key: keyof AppConfig) {
+  function displayValue(key: EditableConfigKey) {
     if (key === "occupancyTimeoutMs") return config[key] / 1000;
     if (key === "minCCTMireds" || key === "maxCCTMireds") return Math.round(1_000_000 / config[key]);
     if (key === "lightWeight" || key === "soundWeight") return Math.round(config[key] * 100);
     return config[key];
   }
 
-  function update(key: keyof AppConfig, value: number) {
+  function update(key: EditableConfigKey, value: number) {
     const storedValue = key === "occupancyTimeoutMs"
       ? value * 1000
       : key === "minCCTMireds" || key === "maxCCTMireds"
@@ -69,11 +72,11 @@ export function SettingsPage() {
     setState("변경됨");
   }
 
-  function inputValue(key: keyof AppConfig) {
+  function inputValue(key: EditableConfigKey) {
     return drafts[key] ?? String(displayValue(key));
   }
 
-  function changeInput(key: keyof AppConfig, raw: string) {
+  function changeInput(key: EditableConfigKey, raw: string) {
     setDrafts((current) => ({ ...current, [key]: raw }));
     if (raw === "") return;
     const value = Number(raw);
@@ -137,7 +140,7 @@ export function SettingsPage() {
       </section>
       <Panel title="빛과 소리 반응" subtitle="자동 조절에서 빛과 소리를 반영하는 정도">
         <div className="settings-grid">
-          {(["lightWeight", "soundWeight"] as Array<keyof AppConfig>).map((key) => (
+          {(["lightWeight", "soundWeight"] as EditableConfigKey[]).map((key) => (
             <label className="input-line" key={key}>
               <span>{labels[key].title}</span>
               <div className="field-with-unit">
@@ -158,7 +161,7 @@ export function SettingsPage() {
       </Panel>
       <Panel title="조명 범위" subtitle="자동 제어에서 사용할 밝기와 색온도">
         <div className="settings-grid">
-          {(["minBrightness", "maxBrightness", "minCCTMireds", "maxCCTMireds"] as Array<keyof AppConfig>).map((key) => (
+          {(["minBrightness", "maxBrightness", "minCCTMireds", "maxCCTMireds"] as EditableConfigKey[]).map((key) => (
             <label className="input-line" key={key}>
               <span>{labels[key].title}</span>
               <div className="field-with-unit">
@@ -171,7 +174,7 @@ export function SettingsPage() {
       </Panel>
       <Panel title="바람 세기" subtitle="팬 속도의 명령 상한을 설정하세요.">
         <div className="settings-grid">
-          {(["fanMaxPercent"] as Array<keyof AppConfig>).map((key) => (
+          {(["fanMaxPercent"] as EditableConfigKey[]).map((key) => (
             <label className="input-line" key={key}>
               <span>{labels[key].title}</span>
               <div className="field-with-unit">
