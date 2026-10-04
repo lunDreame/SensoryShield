@@ -20,6 +20,7 @@ export const fallbackStatus: StatusResponse = {
   system: {
     ready: false,
     mode: "SAFE",
+    overrideRemainingSeconds: 0,
     uptimeSeconds: 0,
     firmware: "local-preview",
     matter: {
@@ -85,10 +86,10 @@ export async function getStatus(): Promise<StatusResponse> {
   return normalizeStatus(await request<RawStatusResponse>("/api/status", undefined, 1200));
 }
 
-export function setMode(mode: ControlMode): Promise<{ ok: boolean }> {
+export function setMode(mode: ControlMode, durationMinutes = 15): Promise<{ ok: boolean }> {
   return request("/api/mode", {
     method: "POST",
-    body: JSON.stringify({ mode })
+    body: JSON.stringify({ mode, durationMinutes })
   });
 }
 

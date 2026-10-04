@@ -29,7 +29,11 @@ const labels: Record<EditableConfigKey, { title: string; unit: string }> = {
   occupancyTimeoutMs: { title: "자동 제어 유지 시간", unit: "분" }
 };
 
-export function SettingsPage() {
+interface SettingsPageProps {
+  onRestartOnboarding: (config: AppConfig) => void;
+}
+
+export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
   const [config, setConfig] = useState(initialConfig);
   const [drafts, setDrafts] = useState<Partial<Record<EditableConfigKey, string>>>({});
   const [state, setState] = useState("변경 사항 없음");
@@ -131,6 +135,20 @@ export function SettingsPage() {
     }
   }
 
+  async function restartOnboarding() {
+    const next = { ...config, profileConfigured: false };
+    setPending(true);
+    setError(null);
+    try {
+      await saveProfile(next);
+      onRestartOnboarding(next);
+    } catch {
+      setError("기기와 연결할 수 없어 개인 설정을 시작하지 못했어요.");
+    } finally {
+      setPending(false);
+    }
+  }
+
   return (
     <main className="page-grid">
       <section className="overview">
@@ -139,6 +157,10 @@ export function SettingsPage() {
           <p>공간에 맞게 조명과 바람의 범위를 정해보세요.</p>
         </div>
       </section>
+      <Panel title="개인 맞춤 기준" subtitle="처음 선택한 빛·소리 민감도와 선호 조명을 다시 설정할 수 있어요."
+        action={<button className="button button-weak" type="button" disabled={pending} onClick={() => void restartOnboarding()}>개인 설정 다시 하기</button>}>
+        <p className="profile-setting-note">다시 답하면 새로운 선택이 AUTO 모드의 기본 기준으로 저장됩니다.</p>
+      </Panel>
       <Panel title="자동 반응 민감도" subtitle="평소와 다른 빛과 소리를 감지했을 때 조명이 반응하는 정도">
         <div className="settings-grid">
           {(["lightWeight", "soundWeight"] as EditableConfigKey[]).map((key) => (

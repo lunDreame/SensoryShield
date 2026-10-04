@@ -46,35 +46,43 @@ export function mockApi() {
         if (scenario === "offline") {send(503,{ok:false});return;}
         if (scenario === "command-error" && req.method === "POST") {send(503,{ok:false});return;}
         if (mode === "OVERRIDE" && Date.now() >= overrideUntil) mode = "AUTO";
+        const noise = scenario === "noise";
+        const micError = scenario === "mic-error";
+        const vacant = scenario === "vacant";
+        const impulse = scenario === "impulse" && Math.floor(Date.now()/1500)%4 === 0;
+        const autoSpeed = vacant || profile.fanMaxPercent < 18 ? 0 : Math.min(profile.fanMaxPercent, noise || micError ? 18 : 30);
         if (path === "/api/profile") {
           if (req.method === "POST") profile = {...profile, ...body};
           send(200,req.method === "POST" ? {ok:true} : profile);return;
         }
         if (path === "/api/mode") {
           if (!["AUTO","MANUAL","OVERRIDE","SAFE"].includes(body.mode)) {send(400,{ok:false});return;}
-          mode=body.mode;overrideUntil=Date.now()+900000;send(200,{ok:true});return;
+          if (body.mode === "OVERRIDE" && (!Number.isInteger(body.durationMinutes) || body.durationMinutes < 1 || body.durationMinutes > 1440)) {send(400,{ok:false});return;}
+          mode=body.mode;overrideUntil=Date.now()+(body.durationMinutes ?? 15)*60000;send(200,{ok:true});return;
         }
         if (path === "/api/fan") {
+          if (mode !== "MANUAL" && mode !== "OVERRIDE") {
+            manualLight={lightOn:!vacant,brightnessPercent:vacant?0:60,cctMireds:370};
+          }
           const speed = Math.min(profile.fanMaxPercent, Math.max(0,body.speed));
           manualFan={fanOn:body.power && speed>0,fanPercent:body.power ? speed : 0};
           mode="MANUAL";send(200,{ok:true});return;
         }
         if (path === "/api/light") {
+          if (mode !== "MANUAL" && mode !== "OVERRIDE") {
+            manualFan={fanOn:autoSpeed>0,fanPercent:autoSpeed};
+          }
           manualLight={lightOn:body.power,brightnessPercent:body.brightness,cctMireds:body.cct};
           mode="MANUAL";send(200,{ok:true});return;
         }
-        const noise = scenario === "noise";
-        const micError = scenario === "mic-error";
-        const vacant = scenario === "vacant";
-        const impulse = scenario === "impulse" && Math.floor(Date.now()/1500)%4 === 0;
-        const autoSpeed = vacant || profile.fanMaxPercent < 18 ? 0 : Math.min(profile.fanMaxPercent, noise || micError ? 18 : 30);
         const status = {
           sensor:{lux:180,occupied:!vacant,soundEnergy:micError ? 0 : noise || impulse ? 0.15 : 0.01,
             sensoryScore:noise || impulse ? 6 : 0.4,illuminanceValid:true,micValid:!micError,pirValid:true},
           outputs: mode === "MANUAL" || mode === "OVERRIDE" ? {...manualLight,...manualFan} : mode === "SAFE" ?
             {lightOn:false,brightnessPercent:0,cctMireds:370,fanOn:false,fanPercent:0} :
             {lightOn:!vacant,brightnessPercent:vacant?0:60,cctMireds:370,fanOn:autoSpeed>0,fanPercent:autoSpeed},
-          system:{ready:true,mode,uptimeSeconds:Math.floor((Date.now()-started)/1000),firmware:"mock-ui-fixtures",
+          system:{ready:true,mode,overrideRemainingSeconds:mode === "OVERRIDE" ? Math.max(0,Math.ceil((overrideUntil-Date.now())/1000)) : 0,
+            uptimeSeconds:Math.floor((Date.now()-started)/1000),firmware:"mock-ui-fixtures",
             matter:{commissioned:false,fabricCount:0,threadAttached:false},storage:{appConfig:true,deviceTable:true}}
         };
         if(path === "/api/status") send(200,status);

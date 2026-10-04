@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { setMode } from "../../shared/api/client";
+import { formatRemainingSeconds } from "../../shared/lib/duration";
 import type { ControlMode } from "../../shared/types/domain";
 
 const modes: ControlMode[] = ["AUTO", "MANUAL", "OVERRIDE", "SAFE"];
@@ -20,9 +21,10 @@ const descriptions: Record<ControlMode, string> = {
 interface ModeSwitchProps {
   mode: ControlMode;
   available: boolean;
+  overrideRemainingSeconds: number;
 }
 
-export function ModeSwitch({ mode, available }: ModeSwitchProps) {
+export function ModeSwitch({ mode, available, overrideRemainingSeconds }: ModeSwitchProps) {
   const [pending, setPending] = useState<ControlMode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -63,8 +65,9 @@ export function ModeSwitch({ mode, available }: ModeSwitchProps) {
       ))}
     </div>
     <p id="mode-description" className="panel-subtitle" style={{ marginTop: 12 }}>
-      {available ? descriptions[mode] : "연결 후 작동 방식을 확인하고 변경할 수 있어요."}
+      {available ? mode === "OVERRIDE" ? `현재 설정을 약 ${formatRemainingSeconds(overrideRemainingSeconds)} 더 유지한 뒤 개인 맞춤 자동으로 돌아갑니다.` : descriptions[mode] : "연결 후 작동 방식을 확인하고 변경할 수 있어요."}
     </p>
+    {available && (mode === "MANUAL" || mode === "OVERRIDE") ? <button className="button button-weak mode-return" type="button" disabled={pending !== null} onClick={() => void changeMode("AUTO")}>개인 맞춤 자동으로 돌아가기</button> : null}
     {message && available ? <p className="panel-subtitle" role="status" style={{ marginTop: 8 }}>{message}</p> : null}
     {error ? <p className="inline-error" role="alert">{error}</p> : null}
     </div>

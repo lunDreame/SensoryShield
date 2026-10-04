@@ -33,11 +33,11 @@ export function DashboardPage({ status, updatedAt, connectionError }: DashboardP
         </div>
       </section>
       <EnvironmentSummary sensor={status.sensor} />
-      <CCTLightControl outputs={status.outputs} available={status.system.ready} />
+      <CCTLightControl outputs={status.outputs} available={status.system.ready} mode={status.system.mode} />
       <FanControl outputs={status.outputs} available={status.system.ready} mode={status.system.mode} />
       <section className="panel mode-panel">
         <div className="panel-header"><div><h2>작동 방식</h2><p className="panel-subtitle">자동으로 맡기거나 직접 조절할 수 있어요.</p></div></div>
-        <ModeSwitch mode={status.system.mode} available={status.system.ready} />
+        <ModeSwitch mode={status.system.mode} available={status.system.ready} overrideRemainingSeconds={status.system.overrideRemainingSeconds} />
       </section>
     </main>
   );

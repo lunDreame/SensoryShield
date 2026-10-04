@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
-import { getProfile, setFan } from "../../shared/api/client";
+import { getProfile, setFan, setMode } from "../../shared/api/client";
+import { TemporaryApplyActions } from "../../features/temporary-control/TemporaryApplyActions";
+import { formatDurationMinutes } from "../../shared/lib/duration";
 import { Panel } from "../../shared/ui/Panel";
 import "./fan-control.css";
 import type { ControlMode, OutputStatus } from "../../shared/types/domain";
@@ -43,7 +45,7 @@ export function FanControl({ outputs, available, mode }: FanControlProps) {
   const modeLabel = { AUTO: "자동", MANUAL: "수동", OVERRIDE: "잠시 사용", SAFE: "안전" }[mode];
   const rangeProgress = limit !== null && limit > 18 ? (selectedSpeed - 18) / (limit - 18) * 100 : 0;
 
-  async function commit(power: boolean) {
+  async function commit(power: boolean, applyMode: "MANUAL" | "OVERRIDE" = "MANUAL", durationMinutes = 15) {
     if (requestInFlight.current || !available || (power && !canStart)) return;
     requestInFlight.current = true;
     setPending(true);
@@ -52,8 +54,12 @@ export function FanControl({ outputs, available, mode }: FanControlProps) {
     try {
       const result = await setFan({ power, speed: power ? selectedSpeed : 0 });
       if (!result.ok) throw new Error("rejected");
+      if (applyMode === "OVERRIDE") {
+        const modeResult = await setMode("OVERRIDE", durationMinutes);
+        if (!modeResult.ok) throw new Error("rejected");
+      }
       setDirty(false);
-      setMessage(power ? "속도 명령을 전송했어요. 수신된 현재 속도를 확인해 주세요." : "정지 명령을 전송했어요. 수신된 현재 상태를 확인해 주세요.");
+      setMessage(power ? applyMode === "OVERRIDE" ? `이 바람을 ${formatDurationMinutes(durationMinutes)} 동안 사용한 뒤 개인 맞춤 자동으로 돌아가요.` : "이 바람을 계속 유지해요. 자동으로 돌아가려면 작동 방식에서 선택해 주세요." : "정지 명령을 전송했어요. 수신된 현재 상태를 확인해 주세요.");
     } catch {
       setError("명령 전송 실패 · 선택값은 유지됩니다. 연결 확인 후 다시 적용해 주세요.");
     } finally {
@@ -97,9 +103,9 @@ export function FanControl({ outputs, available, mode }: FanControlProps) {
         </div>
         <div className="fan-range-labels"><span>{canStart ? "18%" : "--"}</span>
           <span>{limit === null ? "상한 확인 중" : `설정 상한 ${limit}%`}</span></div>
-        <p id="fan-speed-help" className="fan-help">선택 후 적용하면 수동 모드로 전환됩니다.</p>
-        <button className="button button-primary fan-apply" type="button" disabled={!canStart || pending}
-          onClick={() => void commit(true)}>{pending ? "전송 중" : "속도 적용"}</button>
+        <p id="fan-speed-help" className="fan-help">속도를 선택한 뒤 적용 방식을 골라주세요.</p>
+        <TemporaryApplyActions disabled={!canStart || !dirty} pending={pending}
+          onApply={(applyMode, durationMinutes) => void commit(true, applyMode, durationMinutes)} />
       </div>
       {limit !== null && limit < 18 ? <p className="fan-feedback">팬 사용이 제한돼 있어요. 설정에서 한도를 18% 이상으로 높여주세요.</p> : null}
       {message ? <p className="fan-feedback fan-success" role="status">{message}</p> : null}

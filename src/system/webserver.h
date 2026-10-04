@@ -11,7 +11,7 @@ class WebServer final {
     int Initialize();
     int HandleLightCommand(bool on, uint8_t brightnessPercent, uint16_t cctMireds);
     int HandleFanCommand(bool on, uint8_t speedPercent);
-    int HandleModeCommand(ControlMode mode);
+    int HandleModeCommand(ControlMode mode, uint32_t overrideDurationMinutes = 15U);
     int HandleProfileUpdate(const AppConfig& config);
     int HandleFactoryReset();
     int BuildStatusJson(char* buffer, size_t bufferSize) const;

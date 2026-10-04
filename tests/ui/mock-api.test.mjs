@@ -13,9 +13,18 @@ async function request(url, body) {
 }
 const status=await request('/api/status');
 assert.equal(status.body.outputs.fanPercent,30);
+await request('/api/light',{power:true,brightness:45,cct:370});
+assert.equal((await request('/api/status')).body.outputs.fanPercent,30);
+await request('/__mock/scenario',{scenario:'normal'});
 await request('/api/fan',{power:true,speed:60});
+assert.equal((await request('/api/status')).body.outputs.brightnessPercent,60);
 assert.equal((await request('/api/status')).body.outputs.fanPercent,60);
 assert.equal((await request('/api/status')).body.system.mode,'MANUAL');
+await request('/api/mode',{mode:'OVERRIDE',durationMinutes:10});
+const overrideStatus=await request('/api/status');
+assert.equal(overrideStatus.body.system.mode,'OVERRIDE');
+assert.ok(overrideStatus.body.system.overrideRemainingSeconds > 0 && overrideStatus.body.system.overrideRemainingSeconds <= 600);
+assert.equal((await request('/api/mode',{mode:'OVERRIDE',durationMinutes:0})).status,400);
 await request('/api/fan',{power:false,speed:0});
 assert.equal((await request('/api/status')).body.outputs.fanOn,false);
 await request('/__mock/scenario',{scenario:'noise'});
