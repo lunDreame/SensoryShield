@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { getProfile, setFan, setMode } from "../../shared/api/client";
 import { TemporaryApplyActions } from "../../features/temporary-control/TemporaryApplyActions";
+import { formatDurationMinutes } from "../../shared/lib/duration";
 import { Panel } from "../../shared/ui/Panel";
 import "./fan-control.css";
 import type { ControlMode, OutputStatus } from "../../shared/types/domain";
@@ -58,7 +59,7 @@ export function FanControl({ outputs, available, mode }: FanControlProps) {
         if (!modeResult.ok) throw new Error("rejected");
       }
       setDirty(false);
-      setMessage(power ? applyMode === "OVERRIDE" ? `이 바람을 ${durationMinutes}분간 사용한 뒤 개인 맞춤 자동으로 돌아가요.` : "이 바람을 계속 유지해요. 자동으로 돌아가려면 작동 방식에서 선택해 주세요." : "정지 명령을 전송했어요. 수신된 현재 상태를 확인해 주세요.");
+      setMessage(power ? applyMode === "OVERRIDE" ? `이 바람을 ${formatDurationMinutes(durationMinutes)} 동안 사용한 뒤 개인 맞춤 자동으로 돌아가요.` : "이 바람을 계속 유지해요. 자동으로 돌아가려면 작동 방식에서 선택해 주세요." : "정지 명령을 전송했어요. 수신된 현재 상태를 확인해 주세요.");
     } catch {
       setError("명령 전송 실패 · 선택값은 유지됩니다. 연결 확인 후 다시 적용해 주세요.");
     } finally {

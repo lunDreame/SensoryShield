@@ -109,9 +109,10 @@ button:disabled { cursor: wait; opacity: .58; }
 .control-caption { display: flex; justify-content: space-between; margin-top: -5px; color: var(--muted); font-size: 11px; }
 .control-apply-help { margin: 18px 0 10px; color: var(--body); font-size: 12px; }
 .temporary-apply { display: grid; gap: 10px; }
-.temporary-duration { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: var(--body); font-size: 12px; font-weight: 700; }
-.temporary-duration .field-with-unit { width: 116px; }
-.temporary-duration input { min-width: 0; }
+.temporary-duration { display: grid; gap: 8px; color: var(--body); font-size: 12px; font-weight: 700; }
+.duration-presets { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+.duration-presets button { min-width: 0; border: 1px solid var(--line); border-radius: 8px; background: #fff; padding: 8px 4px; color: var(--body); font-size: 12px; font-weight: 700; }
+.duration-presets button.active { border-color: #9fc5fb; background: var(--blue-weak); color: var(--blue-ink); }
 .control-apply-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .control-apply-actions .button { min-height: 42px; }
 .control-feedback { margin: 12px 0 0; color: #008a58; font-size: 12px; line-height: 1.55; }

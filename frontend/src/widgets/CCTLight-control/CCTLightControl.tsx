@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties } from "react";
 import { setLight, setMode } from "../../shared/api/client";
 import { TemporaryApplyActions } from "../../features/temporary-control/TemporaryApplyActions";
 import { describeKelvin } from "../../shared/lib/environment-labels";
+import { formatDurationMinutes } from "../../shared/lib/duration";
 import { Panel } from "../../shared/ui/Panel";
 import type { ControlMode, OutputStatus } from "../../shared/types/domain";
 
@@ -38,7 +39,7 @@ export function CCTLightControl({ outputs, available, mode }: CCTLightControlPro
         if (!modeResult.ok) throw new Error("rejected");
       }
       setDirty(false);
-      setMessage(applyMode === "OVERRIDE" ? `이 조명을 ${durationMinutes}분간 사용한 뒤 개인 맞춤 자동으로 돌아가요.` : "이 조명을 계속 유지해요. 자동으로 돌아가려면 작동 방식에서 선택해 주세요.");
+      setMessage(applyMode === "OVERRIDE" ? `이 조명을 ${formatDurationMinutes(durationMinutes)} 동안 사용한 뒤 개인 맞춤 자동으로 돌아가요.` : "이 조명을 계속 유지해요. 자동으로 돌아가려면 작동 방식에서 선택해 주세요.");
     } catch {
       setError("조명 명령을 보내지 못했어요. 기기 연결을 확인해 주세요.");
     } finally {
