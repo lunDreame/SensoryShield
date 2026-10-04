@@ -107,6 +107,11 @@ button:disabled { cursor: wait; opacity: .58; }
 .slider input:active::-webkit-slider-thumb { transform: scale(1.12); }
 .control-value { color: var(--ink); font-variant-numeric: tabular-nums; font-size: 14px; font-weight: 800; }
 .control-caption { display: flex; justify-content: space-between; margin-top: -5px; color: var(--muted); font-size: 11px; }
+.control-apply-help { margin: 18px 0 10px; color: var(--body); font-size: 12px; }
+.control-apply-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.control-apply-actions .button { min-height: 42px; }
+.control-feedback { margin: 12px 0 0; color: #008a58; font-size: 12px; line-height: 1.55; }
+.mode-return { margin-top: 12px; }
 .segmented { display: flex; flex-wrap: wrap; gap: 4px; border-radius: 12px; background: var(--surface); padding: 4px; }
 .segmented button { min-height: 40px; flex: 1 1 auto; border: 0; border-radius: 9px; background: transparent; color: var(--body); padding: 0 12px; font-size: 13px; font-weight: 700; transition: background 180ms ease, color 180ms ease, box-shadow 180ms ease; }
 .segmented button:hover { color: var(--ink); }
@@ -123,6 +128,7 @@ button:disabled { cursor: wait; opacity: .58; }
 .input-line > span { color: var(--body); font-size: 13px; font-weight: 700; }
 .setting-meaning { color: var(--body); font-size: 12px; line-height: 1.6; }
 .setting-meaning b { color: var(--blue-ink); font-weight: 800; }
+.profile-setting-note { margin: 0; color: var(--body); font-size: 13px; line-height: 1.6; }
 .field-with-unit { display: flex; align-items: center; min-height: 44px; border: 1px solid var(--line); border-radius: 10px; background: #fff; }
 .field-with-unit:focus-within { border-color: var(--blue); box-shadow: 0 0 0 3px #3182f61c; }
 .field-with-unit input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; padding: 0 12px; color: var(--ink); font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }

@@ -19,7 +19,8 @@
 .fan-panel .fan-slider input:disabled { cursor: not-allowed; opacity: .5; }
 .fan-range-labels { display: flex; justify-content: space-between; gap: 12px; color: var(--body); font-size: 11px; }
 .fan-help { margin: 15px 0 12px; color: var(--body); font-size: 12px; line-height: 1.6; }
-.fan-panel .fan-apply { width: 100%; min-height: 44px; }
+.fan-apply-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.fan-apply-actions .button { min-height: 44px; }
 .fan-panel button:disabled { cursor: not-allowed; }
 .fan-feedback { margin: 14px 0 0; font-size: 12px; color: var(--body); line-height: 1.6; overflow-wrap: anywhere; }
 .fan-success { color: #008a58; }
