@@ -31,10 +31,16 @@ export function App() {
   return (
     <div className="app-shell">
       <nav className="topbar">
-        <div className="nav-tabs" aria-label="주요 화면">
-          <button className={route === "dashboard" ? "active" : ""} type="button" onClick={() => setRoute("dashboard")}>홈</button>
-          <button className={route === "settings" ? "active" : ""} type="button" onClick={() => setRoute("settings")}>설정</button>
-          <button className={route === "diagnostics" ? "active" : ""} type="button" onClick={() => setRoute("diagnostics")}>기기 상태</button>
+        <div className="topbar-main">
+          <button className="brand-home" type="button" aria-label="SensoryShield 홈" onClick={() => setRoute("dashboard")}>
+            <img className="brand-full" src="/brand/sensoryshield-logo.png" alt="" />
+            <img className="brand-mark" src="/brand/sensoryshield-mark.png" alt="" />
+          </button>
+          <div className="nav-tabs" aria-label="주요 화면">
+            <button className={route === "dashboard" ? "active" : ""} type="button" onClick={() => setRoute("dashboard")}>홈</button>
+            <button className={route === "settings" ? "active" : ""} type="button" onClick={() => setRoute("settings")}>설정</button>
+            <button className={route === "diagnostics" ? "active" : ""} type="button" onClick={() => setRoute("diagnostics")}>기기 상태</button>
+          </div>
         </div>
         <span className={`connection-status${status.system.ready ? " is-ready" : ""}`} role="status">
           <i className="connection-dot" />{status.system.ready ? "기기 연결됨" : error ? "기기 연결 실패" : "기기 연결 전"}
