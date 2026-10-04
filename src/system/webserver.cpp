@@ -412,7 +412,7 @@ int WebServer::BuildStatusJson(char* buffer, size_t bufferSize) const {
         "\"illuminanceValid\":%s,\"micValid\":%s,\"pirValid\":%s},"
         "\"outputs\":{\"lightOn\":%s,\"brightnessPercent\":%u,\"cctMireds\":%u,"
         "\"fanOn\":%s,\"fanPercent\":%u},"
-        "\"system\":{\"ready\":%s,\"mode\":%u,\"uptimeSeconds\":%u,\"firmware\":\"%s\","
+        "\"system\":{\"ready\":%s,\"mode\":%u,\"overrideRemainingSeconds\":%u,\"uptimeSeconds\":%u,\"firmware\":\"%s\","
         "\"matter\":{\"commissioned\":%s,\"fabricCount\":%u,\"threadAttached\":%s},"
         "\"storage\":{\"appConfig\":true,\"deviceTable\":true}}}",
         static_cast<double>(snapshot.lux), snapshot.occupied ? "true" : "false",
@@ -420,6 +420,7 @@ int WebServer::BuildStatusJson(char* buffer, size_t bufferSize) const {
         snapshot.illuminanceValid ? "true" : "false", snapshot.micValid ? "true" : "false",
         snapshot.pirValid ? "true" : "false", light.on ? "true" : "false", light.brightnessPercent,
         light.cctMireds, fan.on ? "true" : "false", fan.speedPercent, GetSystem()->Ready() ? "true" : "false", mode,
+        GetSystem()->OverrideRemainingSeconds(),
         k_uptime_get_32() / 1000U, APP_NAME, GetMatterBridge()->Commissioned() ? "true" : "false",
         GetMatterBridge()->FabricCount(), GetMatterBridge()->ThreadAttached() ? "true" : "false");
     return (written < 0 || static_cast<size_t>(written) >= bufferSize) ? -ENOMEM : 0;

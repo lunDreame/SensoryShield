@@ -21,6 +21,7 @@ export interface OutputStatus {
 export interface SystemHealth {
   ready: boolean;
   mode: ControlMode;
+  overrideRemainingSeconds: number;
   uptimeSeconds: number;
   firmware: string;
   matter: {

@@ -24,6 +24,7 @@ class System final {
     ControlMode Mode() const {
         return mMode;
     }
+    uint32_t OverrideRemainingSeconds() const;
     bool Ready() const {
         return mReady;
     }

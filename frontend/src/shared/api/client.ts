@@ -20,6 +20,7 @@ export const fallbackStatus: StatusResponse = {
   system: {
     ready: false,
     mode: "SAFE",
+    overrideRemainingSeconds: 0,
     uptimeSeconds: 0,
     firmware: "local-preview",
     matter: {

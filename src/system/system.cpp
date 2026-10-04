@@ -259,8 +259,21 @@ int System::SetMode(ControlMode mode) {
     return 0;
 }
 
+uint32_t System::OverrideRemainingSeconds() const {
+    if (mMode != ControlMode::Override || mOverrideDeadlineMs <= 0) {
+        return 0;
+    }
+    const int64_t remainingMs = mOverrideDeadlineMs - k_uptime_get();
+    return remainingMs > 0 ? static_cast<uint32_t>((remainingMs + 999) / 1000) : 0;
+}
+
 int System::SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMireds) {
     ControlTarget next = mManualTarget;
+    if (mMode != ControlMode::Manual && mMode != ControlMode::Override) {
+        const FanState fan = GetFanDevice()->CurrentState();
+        next.fanOn = fan.on;
+        next.fanPercent = fan.speedPercent;
+    }
     next.lightOn = on;
     next.brightnessPercent = brightnessPercent;
     next.cctMireds = cctMireds;
@@ -278,6 +291,12 @@ int System::SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMired
 
 int System::SetManualFan(bool on, uint8_t speedPercent) {
     ControlTarget next = mManualTarget;
+    if (mMode != ControlMode::Manual && mMode != ControlMode::Override) {
+        const LightState light = GetLightDevice()->CurrentState();
+        next.lightOn = light.on;
+        next.brightnessPercent = light.brightnessPercent;
+        next.cctMireds = light.cctMireds;
+    }
     next.fanOn = on;
     next.fanPercent = speedPercent;
     const int ret = GetFanDevice()->ApplyTarget(next.fanOn, next.fanPercent);
