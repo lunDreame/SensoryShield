@@ -1,4 +1,5 @@
 #include <zephyr/dt-bindings/gpio/gpio.h>
+#include <zephyr/dt-bindings/led/led.h>
 #include <zephyr/dt-bindings/pwm/pwm.h>
 #include <zephyr/dt-bindings/pinctrl/nrf-pinctrl.h>
 #include <samples/matter/nrf54lm20_cpuapp_partitions.dtsi>
@@ -11,22 +12,13 @@
     aliases {
         pir = &pir_sensor;
         bh1750 = &bh1750;
-        warm-pwm = &warm_pwm;
-        cool-pwm = &cool_pwm;
+        led-strip = &ws2812b_ring;
         fan-pwm = &fan_pwm;
         dmic-dev = &pdm20;
     };
 
     pwmleds {
         compatible = "pwm-leds";
-
-        warm_pwm: warm_pwm {
-            pwms = <&pwm20 0 PWM_USEC(1000) PWM_POLARITY_NORMAL>;
-        };
-
-        cool_pwm: cool_pwm {
-            pwms = <&pwm20 1 PWM_USEC(1000) PWM_POLARITY_NORMAL>;
-        };
 
         fan_pwm: fan_pwm {
             pwms = <&pwm20 2 PWM_USEC(1000) PWM_POLARITY_NORMAL>;
@@ -40,6 +32,16 @@
             gpios = <&gpio1 10 GPIO_ACTIVE_HIGH>;
             label = "HC-SR501 PIR";
         };
+    };
+
+    ws2812b_ring: ws2812b-ring {
+        compatible = "worldsemi,ws2812-gpio";
+        gpios = <&gpio3 0 GPIO_ACTIVE_HIGH>;
+        chain-length = <12>;
+        color-mapping = <LED_COLOR_ID_GREEN
+                         LED_COLOR_ID_RED
+                         LED_COLOR_ID_BLUE>;
+        reset-delay = <50>;
     };
 };
 
@@ -91,17 +93,13 @@ dmic_dev: &pdm20 {
 
     pwm20_default: pwm20_default {
         group1 {
-            psels = <NRF_PSEL(PWM_OUT0, 3, 0)>,
-                    <NRF_PSEL(PWM_OUT1, 3, 1)>,
-                    <NRF_PSEL(PWM_OUT2, 3, 2)>;
+            psels = <NRF_PSEL(PWM_OUT2, 3, 2)>;
         };
     };
 
     pwm20_sleep: pwm20_sleep {
         group1 {
-            psels = <NRF_PSEL(PWM_OUT0, 3, 0)>,
-                    <NRF_PSEL(PWM_OUT1, 3, 1)>,
-                    <NRF_PSEL(PWM_OUT2, 3, 2)>;
+            psels = <NRF_PSEL(PWM_OUT2, 3, 2)>;
             low-power-enable;
         };
     };

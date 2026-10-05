@@ -1,5 +1,5 @@
 import { ModeSwitch } from "../../features/change-mode/ModeSwitch";
-import { CCTLightControl } from "../../widgets/CCTLight-control/CCTLightControl";
+import { WS2812BControl } from "../../widgets/ws2812b-control/WS2812BControl";
 import { EnvironmentSummary } from "../../widgets/environment-summary/EnvironmentSummary";
 import { FanControl } from "../../widgets/fan-control/FanControl";
 import type { StatusResponse } from "../../shared/types/domain";
@@ -33,7 +33,7 @@ export function DashboardPage({ status, updatedAt, connectionError }: DashboardP
         </div>
       </section>
       <EnvironmentSummary sensor={status.sensor} />
-      <CCTLightControl outputs={status.outputs} available={status.system.ready} mode={status.system.mode} />
+      <WS2812BControl outputs={status.outputs} available={status.system.ready} mode={status.system.mode} />
       <FanControl outputs={status.outputs} available={status.system.ready} mode={status.system.mode} />
       <section className="panel mode-panel">
         <div className="panel-header"><div className="panel-title-group"><img className="panel-icon" src="/illustrations/mode-control.png" alt="" /><div><h2>작동 방식</h2><p className="panel-subtitle">자동으로 맡기거나 직접 조절할 수 있어요.</p></div></div></div>

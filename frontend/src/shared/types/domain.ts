@@ -14,6 +14,10 @@ export interface OutputStatus {
   lightOn: boolean;
   brightnessPercent: number;
   cctMireds: number;
+  rgbMode: boolean;
+  red: number;
+  green: number;
+  blue: number;
   fanOn: boolean;
   fanPercent: number;
 }

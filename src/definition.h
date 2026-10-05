@@ -65,12 +65,17 @@ struct ControlTarget {
     bool lightOn;
     uint8_t brightnessPercent;
     uint16_t cctMireds;
+    bool rgbMode;
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
     bool fanOn;
     uint8_t fanPercent;
     float sensoryScore;
 
     bool operator!=(const ControlTarget& other) const {
         return lightOn != other.lightOn || brightnessPercent != other.brightnessPercent || cctMireds != other.cctMireds ||
+               rgbMode != other.rgbMode || red != other.red || green != other.green || blue != other.blue ||
                fanOn != other.fanOn || fanPercent != other.fanPercent;
     }
 };

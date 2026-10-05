@@ -6,9 +6,14 @@ struct LightState {
     bool on;
     uint8_t brightnessPercent;
     uint16_t cctMireds;
+    bool rgbMode;
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
 
     bool operator!=(const LightState& other) const {
-        return on != other.on || brightnessPercent != other.brightnessPercent || cctMireds != other.cctMireds;
+        return on != other.on || brightnessPercent != other.brightnessPercent || cctMireds != other.cctMireds ||
+               rgbMode != other.rgbMode || red != other.red || green != other.green || blue != other.blue;
     }
 };
 
@@ -21,6 +26,8 @@ class LightDevice final : public Device {
     int UpdateToMatter(bool force = false) override;
     int ApplyCommand(const DeviceCommand& command) override;
     int ApplyTarget(bool on, uint8_t brightnessPercent, uint16_t cctMireds);
+    int ApplyTarget(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red, uint8_t green,
+                    uint8_t blue);
     LightState CurrentState() const {
         return mCurrentState;
     }

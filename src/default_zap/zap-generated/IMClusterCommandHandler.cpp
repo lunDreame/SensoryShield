@@ -39,12 +39,44 @@ namespace Clusters {
 
 namespace ColorControl {
 
+bool SensoryShieldMoveToHueCallback(CommandHandler* commandObj, const ConcreteCommandPath& commandPath,
+                                    const Commands::MoveToHue::DecodableType& commandData);
+bool SensoryShieldMoveToSaturationCallback(CommandHandler* commandObj, const ConcreteCommandPath& commandPath,
+                                           const Commands::MoveToSaturation::DecodableType& commandData);
+bool SensoryShieldMoveToHueAndSaturationCallback(
+    CommandHandler* commandObj, const ConcreteCommandPath& commandPath,
+    const Commands::MoveToHueAndSaturation::DecodableType& commandData);
+
 Protocols::InteractionModel::Status
 DispatchServerCommand(CommandHandler* apCommandObj, const ConcreteCommandPath& aCommandPath, TLV::TLVReader& aDataTlv) {
     CHIP_ERROR TLVError = CHIP_NO_ERROR;
     bool wasHandled = false;
     {
         switch (aCommandPath.mCommandId) {
+        case Commands::MoveToHue::Id: {
+            Commands::MoveToHue::DecodableType commandData;
+            TLVError = DataModel::Decode(aDataTlv, commandData);
+            if (TLVError == CHIP_NO_ERROR) {
+                wasHandled = SensoryShieldMoveToHueCallback(apCommandObj, aCommandPath, commandData);
+            }
+            break;
+        }
+        case Commands::MoveToSaturation::Id: {
+            Commands::MoveToSaturation::DecodableType commandData;
+            TLVError = DataModel::Decode(aDataTlv, commandData);
+            if (TLVError == CHIP_NO_ERROR) {
+                wasHandled = SensoryShieldMoveToSaturationCallback(apCommandObj, aCommandPath, commandData);
+            }
+            break;
+        }
+        case Commands::MoveToHueAndSaturation::Id: {
+            Commands::MoveToHueAndSaturation::DecodableType commandData;
+            TLVError = DataModel::Decode(aDataTlv, commandData);
+            if (TLVError == CHIP_NO_ERROR) {
+                wasHandled = SensoryShieldMoveToHueAndSaturationCallback(apCommandObj, aCommandPath, commandData);
+            }
+            break;
+        }
         case Commands::MoveToColorTemperature::Id: {
             Commands::MoveToColorTemperature::DecodableType commandData;
             TLVError = DataModel::Decode(aDataTlv, commandData);

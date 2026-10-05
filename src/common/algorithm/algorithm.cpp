@@ -14,7 +14,7 @@ int Algorithm::Initialize(const AppConfig& config) {
     SetConfig(config);
     mStimulusScorer.Reset();
     mSoundFan.Reset();
-    mPreviousTarget = {false, config.minBrightness, config.maxCCTMireds, false, 0, 0.0f};
+    mPreviousTarget = {false, config.minBrightness, config.maxCCTMireds, false, 255, 255, 255, false, 0, 0.0f};
     LOG_INF("Algorithm ready");
     return 0;
 }
@@ -34,6 +34,10 @@ ControlTarget Algorithm::Evaluate(const SensorSnapshot& snapshot) {
     target.lightOn = light.on;
     target.brightnessPercent = light.brightnessPercent;
     target.cctMireds = light.cctMireds;
+    target.rgbMode = false;
+    target.red = 255;
+    target.green = 255;
+    target.blue = 255;
     target.fanPercent = fanPercent;
     target.fanOn = fanPercent > 0;
 

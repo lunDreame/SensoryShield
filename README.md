@@ -1,6 +1,6 @@
 # SensoryShield
 
-SensoryShield는 nRF54LM20 DK 기반의 로컬 감각 환경 제어 펌웨어입니다. Zephyr RTOS와 C++17을 사용하며, 로컬 센서 처리, PWM 액추에이터 제어, 영구 앱 설정, USB ECM 네트워크, 로컬 HTTP REST API를 포함합니다.
+SensoryShield는 nRF54LM20 DK 기반의 로컬 감각 환경 제어 펌웨어입니다. Zephyr RTOS와 C++17을 사용하며, 로컬 센서 처리, WS2812B LED 링 및 PWM 팬 제어, 영구 앱 설정, USB ECM 네트워크, 로컬 HTTP REST API를 포함합니다.
 
 ## 펌웨어
 
@@ -37,17 +37,18 @@ npm run build
 
 개발 서버는 5173 포트에서 실행되며 `/api` 요청을 보드의 같은 엔드포인트로 프록시합니다. 보드가 없으면 프론트엔드는 오프라인 미리보기 상태로 동작하고 장치 제어는 비활성화됩니다.
 
-REST API는 `/api/status`, `/api/light`, `/api/fan`, `/api/mode`, `/api/profile`, `/api/diagnostics`, `/api/factory-reset`을 제공합니다. factory reset 엔드포인트는 확인 요청이 있는 경우에만 동작합니다.
+REST API는 `/api/status`, `/api/light`, `/api/fan`, `/api/mode`, `/api/profile`, `/api/diagnostics`, `/api/factory-reset`을 제공합니다. `/api/light`는 `power`, `brightness`, `cct`, `rgbMode`, `red`, `green`, `blue`를 받을 수 있습니다. Matter ColorControl은 Level, ColorTemperature, Hue/Saturation 명령을 지원합니다. factory reset 엔드포인트는 확인 요청이 있는 경우에만 동작합니다.
 
 ## 현재 하드웨어 매핑
 
 - BH1750 I2C: SDA `P1.12`, SCL `P1.13`
 - MP34DT01 PDM: CLK `P1.14`, DATA `P1.11`; 16 kHz mono, 100 ms window
 - HC-SR501 PIR: `P1.10`
-- Warm PWM: `P3.00`
-- Cool PWM: `P3.01`
+- WS2812B 12 LED ring: `DI` -> `P3.00` 출력 가능 GPIO 패드, `5V` -> 5 V 전원, `GND` -> 공통 GND, `DO` -> 다음 LED 체인 연결용 또는 미사용
 - Fan PWM: `P3.02`
 
-3.3 V 출력을 MCU 핀에 연결하기 전에 DK의 VDD/VDDIO와 브레이크아웃 보드의 신호 레벨을 확인해야 합니다.
+WS2812B `DI`는 보드의 출력 가능한 GPIO 패드에 연결합니다. 현재 펌웨어는 `P3.00`을 WS2812B 데이터 파형 출력으로 사용합니다.
+
+WS2812B 조명은 밝기 디밍, RGB 색상, 백색 색온도 제어를 지원합니다.
 
 USB VID/PID 값은 아직 Zephyr 테스트 기본값입니다. 제품 배포 전에는 제품에 할당된 값으로 교체해야 합니다.

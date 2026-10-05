@@ -3,7 +3,7 @@ export function mockApi() {
   let scenario = "normal";
   let mode = "AUTO";
   let manualFan = { fanOn: false, fanPercent: 0 };
-  let manualLight = { lightOn: true, brightnessPercent: 60, cctMireds: 370 };
+  let manualLight = { lightOn: true, brightnessPercent: 60, cctMireds: 370, rgbMode: false, red: 255, green: 255, blue: 255 };
   let overrideUntil = 0;
   const started = Date.now();
   let profile = { lightWeight: 0.55, soundWeight: 0.45, minBrightness: 5, maxBrightness: 85,
@@ -62,7 +62,7 @@ export function mockApi() {
         }
         if (path === "/api/fan") {
           if (mode !== "MANUAL" && mode !== "OVERRIDE") {
-            manualLight={lightOn:!vacant,brightnessPercent:vacant?0:60,cctMireds:370};
+            manualLight={lightOn:!vacant,brightnessPercent:vacant?0:60,cctMireds:370,rgbMode:false,red:255,green:255,blue:255};
           }
           const speed = Math.min(profile.fanMaxPercent, Math.max(0,body.speed));
           manualFan={fanOn:body.power && speed>0,fanPercent:body.power ? speed : 0};
@@ -72,15 +72,16 @@ export function mockApi() {
           if (mode !== "MANUAL" && mode !== "OVERRIDE") {
             manualFan={fanOn:autoSpeed>0,fanPercent:autoSpeed};
           }
-          manualLight={lightOn:body.power,brightnessPercent:body.brightness,cctMireds:body.cct};
+          manualLight={lightOn:body.power,brightnessPercent:body.brightness,cctMireds:body.cct,rgbMode:!!body.rgbMode,
+            red:body.red ?? 255,green:body.green ?? 255,blue:body.blue ?? 255};
           mode="MANUAL";send(200,{ok:true});return;
         }
         const status = {
           sensor:{lux:180,occupied:!vacant,soundEnergy:micError ? 0 : noise || impulse ? 0.15 : 0.01,
             sensoryScore:noise || impulse ? 6 : 0.4,illuminanceValid:true,micValid:!micError,pirValid:true},
           outputs: mode === "MANUAL" || mode === "OVERRIDE" ? {...manualLight,...manualFan} : mode === "SAFE" ?
-            {lightOn:false,brightnessPercent:0,cctMireds:370,fanOn:false,fanPercent:0} :
-            {lightOn:!vacant,brightnessPercent:vacant?0:60,cctMireds:370,fanOn:autoSpeed>0,fanPercent:autoSpeed},
+            {lightOn:false,brightnessPercent:0,cctMireds:370,rgbMode:false,red:255,green:255,blue:255,fanOn:false,fanPercent:0} :
+            {lightOn:!vacant,brightnessPercent:vacant?0:60,cctMireds:370,rgbMode:false,red:255,green:255,blue:255,fanOn:autoSpeed>0,fanPercent:autoSpeed},
           system:{ready:true,mode,overrideRemainingSeconds:mode === "OVERRIDE" ? Math.max(0,Math.ceil((overrideUntil-Date.now())/1000)) : 0,
             uptimeSeconds:Math.floor((Date.now()-started)/1000),firmware:"mock-ui-fixtures",
             matter:{commissioned:false,fabricCount:0,threadAttached:false},storage:{appConfig:true,deviceTable:true}}

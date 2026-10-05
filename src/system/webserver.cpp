@@ -23,8 +23,8 @@
 LOG_MODULE_REGISTER(webserver, LOG_LEVEL_INF);
 
 #define HTTP_PORT 80U
-#define HTTP_REQUEST_CAPACITY 256U
-#define HTTP_RESPONSE_CAPACITY 768U
+#define HTTP_REQUEST_CAPACITY 320U
+#define HTTP_RESPONSE_CAPACITY 1024U
 
 enum class ApiRoute : uint8_t { Status, Light, Fan, Mode, Profile, Diagnostics, FactoryReset };
 
@@ -39,6 +39,10 @@ struct LightRequest {
     bool power;
     uint8_t brightness;
     uint16_t cct;
+    bool rgbMode;
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
 };
 
 struct FanRequest {
@@ -80,6 +84,10 @@ static const struct json_obj_descr kLightFields[] = {
     JSON_OBJ_DESCR_PRIM(LightRequest, power, JSON_TOK_TRUE),
     JSON_OBJ_DESCR_PRIM(LightRequest, brightness, JSON_TOK_NUMBER),
     JSON_OBJ_DESCR_PRIM(LightRequest, cct, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(LightRequest, rgbMode, JSON_TOK_TRUE),
+    JSON_OBJ_DESCR_PRIM(LightRequest, red, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(LightRequest, green, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(LightRequest, blue, JSON_TOK_NUMBER),
 };
 static const struct json_obj_descr kFanFields[] = {
     JSON_OBJ_DESCR_PRIM(FanRequest, power, JSON_TOK_TRUE),
@@ -121,6 +129,7 @@ ApiContext kResetContext{ApiRoute::FactoryReset};
 const StaticAsset* kIndexAsset = &kAppHtml;
 const StaticAsset* kJavaScriptAsset = &kAppJavaScript;
 const StaticAsset* kStylesheetAsset = &kAppStylesheet;
+constexpr int kLightRequiredFields = BIT(0) | BIT(1) | BIT(2);
 
 uint16_t servicePort = HTTP_PORT;
 HTTP_SERVICE_DEFINE(sensoryshield_http, nullptr, &servicePort, 2, 2, nullptr, nullptr, nullptr);
@@ -254,8 +263,9 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
             LightRequest payload{};
             const int parsed = json_obj_parse(context->request, context->requestLength, kLightFields,
                                               ARRAY_SIZE(kLightFields), &payload);
-            ret = parsed == BIT_MASK(ARRAY_SIZE(kLightFields))
-                      ? GetWebServer()->HandleLightCommand(payload.power, payload.brightness, payload.cct)
+            ret = (parsed & kLightRequiredFields) == kLightRequiredFields
+                      ? GetWebServer()->HandleLightCommand(payload.power, payload.brightness, payload.cct,
+                                                           payload.rgbMode, payload.red, payload.green, payload.blue)
                       : -EINVAL;
             context->requestLength = 0U;
             break;
@@ -381,6 +391,11 @@ int WebServer::HandleLightCommand(bool on, uint8_t brightnessPercent, uint16_t c
     return GetSystem()->SetManualLight(on, brightnessPercent, cctMireds);
 }
 
+int WebServer::HandleLightCommand(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
+                                  uint8_t green, uint8_t blue) {
+    return GetSystem()->SetManualLight(on, brightnessPercent, cctMireds, rgbMode, red, green, blue);
+}
+
 int WebServer::HandleFanCommand(bool on, uint8_t speedPercent) {
     return GetSystem()->SetManualFan(on, speedPercent);
 }
@@ -416,6 +431,7 @@ int WebServer::BuildStatusJson(char* buffer, size_t bufferSize) const {
         "{\"sensor\":{\"lux\":%.1f,\"occupied\":%s,\"soundEnergy\":%.3f,\"sensoryScore\":%.3f,"
         "\"illuminanceValid\":%s,\"micValid\":%s,\"pirValid\":%s},"
         "\"outputs\":{\"lightOn\":%s,\"brightnessPercent\":%u,\"cctMireds\":%u,"
+        "\"rgbMode\":%s,\"red\":%u,\"green\":%u,\"blue\":%u,"
         "\"fanOn\":%s,\"fanPercent\":%u},"
         "\"system\":{\"ready\":%s,\"mode\":%u,\"overrideRemainingSeconds\":%u,\"uptimeSeconds\":%u,\"firmware\":\"%s\","
         "\"matter\":{\"commissioned\":%s,\"fabricCount\":%u,\"threadAttached\":%s},"
@@ -424,7 +440,8 @@ int WebServer::BuildStatusJson(char* buffer, size_t bufferSize) const {
         static_cast<double>(snapshot.sound.energy), static_cast<double>(target.sensoryScore),
         snapshot.illuminanceValid ? "true" : "false", snapshot.micValid ? "true" : "false",
         snapshot.pirValid ? "true" : "false", light.on ? "true" : "false", light.brightnessPercent,
-        light.cctMireds, fan.on ? "true" : "false", fan.speedPercent, GetSystem()->Ready() ? "true" : "false", mode,
+        light.cctMireds, light.rgbMode ? "true" : "false", light.red, light.green, light.blue,
+        fan.on ? "true" : "false", fan.speedPercent, GetSystem()->Ready() ? "true" : "false", mode,
         GetSystem()->OverrideRemainingSeconds(),
         k_uptime_get_32() / 1000U, APP_NAME, GetMatterBridge()->Commissioned() ? "true" : "false",
         GetMatterBridge()->FabricCount(), GetMatterBridge()->ThreadAttached() ? "true" : "false");

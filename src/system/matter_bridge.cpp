@@ -43,6 +43,8 @@ constexpr AttributeId kClusterRevisionAttributeId = 0x0000FFFD;
 constexpr uint16_t kDescriptorAttributeArraySize = 254;
 constexpr uint16_t kNodeLabelSize = 32;
 constexpr uint8_t kDynamicEndpointCount = CHIP_DEVICE_CONFIG_DYNAMIC_ENDPOINT_COUNT;
+constexpr uint16_t kColorFeatureHueSaturation = 0x0001;
+constexpr uint16_t kColorFeatureColorTemperature = 0x0010;
 
 constexpr uint16_t kDeviceTypeAggregator = 0x000E;
 constexpr uint16_t kDeviceTypeBridgedNode = 0x0013;
@@ -83,6 +85,97 @@ void PutU16(uint8_t* buffer, uint16_t value) {
 
 void PutU32(uint8_t* buffer, uint32_t value) {
     memcpy(buffer, &value, sizeof(value));
+}
+
+uint8_t Max3(uint8_t first, uint8_t second, uint8_t third) {
+    return first > second ? (first > third ? first : third) : (second > third ? second : third);
+}
+
+uint8_t Min3(uint8_t first, uint8_t second, uint8_t third) {
+    return first < second ? (first < third ? first : third) : (second < third ? second : third);
+}
+
+uint8_t RgbToMatterHue(const LightState& light) {
+    if (!light.rgbMode) {
+        return 0;
+    }
+
+    const uint8_t max = Max3(light.red, light.green, light.blue);
+    const uint8_t min = Min3(light.red, light.green, light.blue);
+    const uint8_t delta = max - min;
+    if (delta == 0U) {
+        return 0;
+    }
+
+    int16_t hueDegrees = 0;
+    if (max == light.red) {
+        hueDegrees = static_cast<int16_t>(60 * (static_cast<int16_t>(light.green) - light.blue) / delta);
+        if (hueDegrees < 0) {
+            hueDegrees += 360;
+        }
+    } else if (max == light.green) {
+        hueDegrees = static_cast<int16_t>(120 + (60 * (static_cast<int16_t>(light.blue) - light.red) / delta));
+    } else {
+        hueDegrees = static_cast<int16_t>(240 + (60 * (static_cast<int16_t>(light.red) - light.green) / delta));
+    }
+
+    return static_cast<uint8_t>((static_cast<uint16_t>(hueDegrees) * 254U) / 360U);
+}
+
+uint8_t RgbToMatterSaturation(const LightState& light) {
+    if (!light.rgbMode) {
+        return 0;
+    }
+
+    const uint8_t max = Max3(light.red, light.green, light.blue);
+    const uint8_t min = Min3(light.red, light.green, light.blue);
+    if (max == 0U) {
+        return 0;
+    }
+    return static_cast<uint8_t>(((max - min) * 254U) / max);
+}
+
+void MatterHueSaturationToRgb(uint8_t hue, uint8_t saturation, uint8_t* red, uint8_t* green, uint8_t* blue) {
+    const uint16_t h = (static_cast<uint16_t>(hue) * 360U) / 254U;
+    const uint8_t region = static_cast<uint8_t>(h / 60U);
+    const uint16_t remainder = static_cast<uint16_t>(((h % 60U) * 255U) / 60U);
+    const uint8_t sat = ClampValue<uint8_t>(saturation, 0, 254);
+    const uint8_t p = static_cast<uint8_t>(255U - ((255U * sat) / 254U));
+    const uint8_t q = static_cast<uint8_t>(255U - ((static_cast<uint32_t>(sat) * remainder) / 254U));
+    const uint8_t t = static_cast<uint8_t>(255U - ((static_cast<uint32_t>(sat) * (255U - remainder)) / 254U));
+
+    switch (region % 6U) {
+    case 0:
+        *red = 255;
+        *green = t;
+        *blue = p;
+        break;
+    case 1:
+        *red = q;
+        *green = 255;
+        *blue = p;
+        break;
+    case 2:
+        *red = p;
+        *green = 255;
+        *blue = t;
+        break;
+    case 3:
+        *red = p;
+        *green = q;
+        *blue = 255;
+        break;
+    case 4:
+        *red = t;
+        *green = p;
+        *blue = 255;
+        break;
+    default:
+        *red = 255;
+        *green = p;
+        *blue = q;
+        break;
+    }
 }
 
 Protocols::InteractionModel::Status ReadClusterRevision(AttributeId attributeId, uint8_t* buffer,
@@ -147,7 +240,9 @@ DECLARE_DYNAMIC_ATTRIBUTE(LevelControl::Attributes::CurrentLevel::Id, INT8U, 1, 
     DECLARE_DYNAMIC_ATTRIBUTE_LIST_END();
 
 DECLARE_DYNAMIC_ATTRIBUTE_LIST_BEGIN(colorControlAttrs)
-DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorTemperatureMireds::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::CurrentHue::Id, INT8U, 1, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::CurrentSaturation::Id, INT8U, 1, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorTemperatureMireds::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(WRITABLE)),
     DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorMode::Id, ENUM8, 1, 0),
     DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::EnhancedColorMode::Id, ENUM8, 1, 0),
     DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorCapabilities::Id, BITMAP16, 2, 0),
@@ -187,7 +282,10 @@ constexpr CommandId onOffCommands[] = {OnOff::Commands::Off::Id, OnOff::Commands
                                        OnOff::Commands::Toggle::Id, kInvalidCommandId};
 constexpr CommandId levelControlCommands[] = {LevelControl::Commands::MoveToLevel::Id,
                                              LevelControl::Commands::MoveToLevelWithOnOff::Id, kInvalidCommandId};
-constexpr CommandId colorControlCommands[] = {ColorControl::Commands::MoveToColorTemperature::Id, kInvalidCommandId};
+constexpr CommandId colorControlCommands[] = {ColorControl::Commands::MoveToHue::Id,
+                                              ColorControl::Commands::MoveToSaturation::Id,
+                                              ColorControl::Commands::MoveToHueAndSaturation::Id,
+                                              ColorControl::Commands::MoveToColorTemperature::Id, kInvalidCommandId};
 
 DECLARE_DYNAMIC_CLUSTER_LIST_BEGIN(lightClusters)
 DECLARE_DYNAMIC_CLUSTER(OnOff::Id, onOffAttrs, ZAP_CLUSTER_MASK(SERVER), onOffCommands, nullptr),
@@ -327,18 +425,27 @@ Protocols::InteractionModel::Status ReadLevelControl(AttributeId attributeId, ui
 
 Protocols::InteractionModel::Status ReadColorControl(AttributeId attributeId, uint8_t* buffer, uint16_t maxReadLength) {
     const AppConfig config = GetMemory()->Config();
+    const LightState light = LightDevice::Instance().CurrentState();
+    if (attributeId == ColorControl::Attributes::CurrentHue::Id && maxReadLength >= 1) {
+        *buffer = RgbToMatterHue(light);
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == ColorControl::Attributes::CurrentSaturation::Id && maxReadLength >= 1) {
+        *buffer = RgbToMatterSaturation(light);
+        return Protocols::InteractionModel::Status::Success;
+    }
     if (attributeId == ColorControl::Attributes::ColorTemperatureMireds::Id && maxReadLength >= sizeof(uint16_t)) {
-        PutU16(buffer, LightDevice::Instance().CurrentState().cctMireds);
+        PutU16(buffer, light.cctMireds);
         return Protocols::InteractionModel::Status::Success;
     }
     if ((attributeId == ColorControl::Attributes::ColorMode::Id ||
-         attributeId == ColorControl::Attributes::EnhancedColorMode::Id) &&
+        attributeId == ColorControl::Attributes::EnhancedColorMode::Id) &&
         maxReadLength >= 1) {
-        *buffer = 0x02;
+        *buffer = light.rgbMode ? 0x00 : 0x02;
         return Protocols::InteractionModel::Status::Success;
     }
     if (attributeId == ColorControl::Attributes::ColorCapabilities::Id && maxReadLength >= sizeof(uint16_t)) {
-        PutU16(buffer, 0x0010);
+        PutU16(buffer, kColorFeatureHueSaturation | kColorFeatureColorTemperature);
         return Protocols::InteractionModel::Status::Success;
     }
     if (attributeId == ColorControl::Attributes::ColorTempPhysicalMinMireds::Id && maxReadLength >= sizeof(uint16_t)) {
@@ -349,7 +456,8 @@ Protocols::InteractionModel::Status ReadColorControl(AttributeId attributeId, ui
         PutU16(buffer, config.maxCCTMireds);
         return Protocols::InteractionModel::Status::Success;
     }
-    if (ReadFeatureMap(attributeId, buffer, maxReadLength, 0x0010) == Protocols::InteractionModel::Status::Success) {
+    if (ReadFeatureMap(attributeId, buffer, maxReadLength, kColorFeatureHueSaturation | kColorFeatureColorTemperature) ==
+        Protocols::InteractionModel::Status::Success) {
         return Protocols::InteractionModel::Status::Success;
     }
     return ReadClusterRevision(attributeId, buffer, maxReadLength, 7);
@@ -437,7 +545,8 @@ Protocols::InteractionModel::Status ApplyOnOffWrite(Device& device, uint8_t* buf
     const bool on = *buffer != 0;
     if (device.LogicalId() == LightDevice::Instance().LogicalId()) {
         const LightState current = LightDevice::Instance().CurrentState();
-        return GetSystem()->SetManualLight(on, current.brightnessPercent, current.cctMireds) == 0
+        return GetSystem()->SetManualLight(on, current.brightnessPercent, current.cctMireds, current.rgbMode,
+                                           current.red, current.green, current.blue) == 0
                    ? Protocols::InteractionModel::Status::Success
                    : Protocols::InteractionModel::Status::Failure;
     }
@@ -453,21 +562,40 @@ Protocols::InteractionModel::Status ApplyOnOffWrite(Device& device, uint8_t* buf
 Protocols::InteractionModel::Status ApplyLevelWrite(uint8_t* buffer) {
     const LightState current = LightDevice::Instance().CurrentState();
     const uint8_t percent = MatterLevelToPercent(*buffer);
-    return GetSystem()->SetManualLight(percent > 0U, percent, current.cctMireds) == 0
+    return GetSystem()->SetManualLight(percent > 0U, percent, current.cctMireds, current.rgbMode, current.red,
+                                       current.green, current.blue) == 0
                ? Protocols::InteractionModel::Status::Success
                : Protocols::InteractionModel::Status::Failure;
 }
 
 Protocols::InteractionModel::Status ApplyColorWrite(AttributeId attributeId, uint8_t* buffer) {
-    if (attributeId != ColorControl::Attributes::ColorTemperatureMireds::Id) {
-        return Protocols::InteractionModel::Status::UnsupportedWrite;
-    }
-    uint16_t mireds = 0;
-    memcpy(&mireds, buffer, sizeof(mireds));
     const LightState current = LightDevice::Instance().CurrentState();
-    return GetSystem()->SetManualLight(current.on, current.brightnessPercent, mireds) == 0
-               ? Protocols::InteractionModel::Status::Success
-               : Protocols::InteractionModel::Status::Failure;
+    if (attributeId == ColorControl::Attributes::ColorTemperatureMireds::Id) {
+        uint16_t mireds = 0;
+        memcpy(&mireds, buffer, sizeof(mireds));
+        return GetSystem()->SetManualLight(current.on, current.brightnessPercent, mireds, false, current.red,
+                                           current.green, current.blue) == 0
+                   ? Protocols::InteractionModel::Status::Success
+                   : Protocols::InteractionModel::Status::Failure;
+    }
+
+    if (attributeId == ColorControl::Attributes::CurrentHue::Id ||
+        attributeId == ColorControl::Attributes::CurrentSaturation::Id) {
+        const uint8_t hue = attributeId == ColorControl::Attributes::CurrentHue::Id ? *buffer : RgbToMatterHue(current);
+        const uint8_t saturation = attributeId == ColorControl::Attributes::CurrentSaturation::Id
+                                       ? *buffer
+                                       : RgbToMatterSaturation(current);
+        uint8_t red = 255;
+        uint8_t green = 255;
+        uint8_t blue = 255;
+        MatterHueSaturationToRgb(hue, saturation, &red, &green, &blue);
+        return GetSystem()->SetManualLight(current.on, current.brightnessPercent, current.cctMireds, true, red, green,
+                                           blue) == 0
+                   ? Protocols::InteractionModel::Status::Success
+                   : Protocols::InteractionModel::Status::Failure;
+    }
+
+    return Protocols::InteractionModel::Status::UnsupportedWrite;
 }
 
 Protocols::InteractionModel::Status ApplyFanWrite(AttributeId attributeId, uint8_t* buffer) {
@@ -493,6 +621,55 @@ Protocols::InteractionModel::Status ApplyFanWrite(AttributeId attributeId, uint8
 }
 
 } // namespace
+
+namespace chip::app::Clusters::ColorControl {
+
+bool SensoryShieldMoveToHueCallback(CommandHandler* commandObj, const ConcreteCommandPath& commandPath,
+                                    const Commands::MoveToHue::DecodableType& commandData) {
+    const LightState current = LightDevice::Instance().CurrentState();
+    const uint8_t saturation = RgbToMatterSaturation(current);
+    uint8_t red = 255;
+    uint8_t green = 255;
+    uint8_t blue = 255;
+    MatterHueSaturationToRgb(commandData.hue, saturation, &red, &green, &blue);
+    const int ret =
+        GetSystem()->SetManualLight(current.on, current.brightnessPercent, current.cctMireds, true, red, green, blue);
+    commandObj->AddStatus(commandPath, ret == 0 ? Protocols::InteractionModel::Status::Success
+                                                : Protocols::InteractionModel::Status::Failure);
+    return true;
+}
+
+bool SensoryShieldMoveToSaturationCallback(CommandHandler* commandObj, const ConcreteCommandPath& commandPath,
+                                           const Commands::MoveToSaturation::DecodableType& commandData) {
+    const LightState current = LightDevice::Instance().CurrentState();
+    const uint8_t hue = RgbToMatterHue(current);
+    uint8_t red = 255;
+    uint8_t green = 255;
+    uint8_t blue = 255;
+    MatterHueSaturationToRgb(hue, commandData.saturation, &red, &green, &blue);
+    const int ret =
+        GetSystem()->SetManualLight(current.on, current.brightnessPercent, current.cctMireds, true, red, green, blue);
+    commandObj->AddStatus(commandPath, ret == 0 ? Protocols::InteractionModel::Status::Success
+                                                : Protocols::InteractionModel::Status::Failure);
+    return true;
+}
+
+bool SensoryShieldMoveToHueAndSaturationCallback(
+    CommandHandler* commandObj, const ConcreteCommandPath& commandPath,
+    const Commands::MoveToHueAndSaturation::DecodableType& commandData) {
+    const LightState current = LightDevice::Instance().CurrentState();
+    uint8_t red = 255;
+    uint8_t green = 255;
+    uint8_t blue = 255;
+    MatterHueSaturationToRgb(commandData.hue, commandData.saturation, &red, &green, &blue);
+    const int ret =
+        GetSystem()->SetManualLight(current.on, current.brightnessPercent, current.cctMireds, true, red, green, blue);
+    commandObj->AddStatus(commandPath, ret == 0 ? Protocols::InteractionModel::Status::Success
+                                                : Protocols::InteractionModel::Status::Failure);
+    return true;
+}
+
+} // namespace chip::app::Clusters::ColorControl
 
 MatterBridge& MatterBridge::Instance() {
     static MatterBridge instance;
@@ -629,7 +806,11 @@ int MatterBridge::PublishDeviceState(Device& device) {
         Nrf::PostTask([endpoint] {
             ReportAttribute(endpoint, OnOff::Id, OnOff::Attributes::OnOff::Id);
             ReportAttribute(endpoint, LevelControl::Id, LevelControl::Attributes::CurrentLevel::Id);
+            ReportAttribute(endpoint, ColorControl::Id, ColorControl::Attributes::CurrentHue::Id);
+            ReportAttribute(endpoint, ColorControl::Id, ColorControl::Attributes::CurrentSaturation::Id);
             ReportAttribute(endpoint, ColorControl::Id, ColorControl::Attributes::ColorTemperatureMireds::Id);
+            ReportAttribute(endpoint, ColorControl::Id, ColorControl::Attributes::ColorMode::Id);
+            ReportAttribute(endpoint, ColorControl::Id, ColorControl::Attributes::EnhancedColorMode::Id);
         });
         return 0;
     }

@@ -11,6 +11,8 @@ class System final {
     int Initialize();
     int SetMode(ControlMode mode, uint32_t overrideDurationMs = OVERRIDE_DURATION_MS);
     int SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMireds);
+    int SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
+                       uint8_t green, uint8_t blue);
     int SetManualFan(bool on, uint8_t speedPercent);
     int UpdateConfig(const AppConfig& config);
     int FactoryReset();

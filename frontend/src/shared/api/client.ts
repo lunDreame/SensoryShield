@@ -14,6 +14,10 @@ export const fallbackStatus: StatusResponse = {
     lightOn: false,
     brightnessPercent: 0,
     cctMireds: 370,
+    rgbMode: false,
+    red: 255,
+    green: 255,
+    blue: 255,
     fanOn: false,
     fanPercent: 0
   },
@@ -97,6 +101,10 @@ export function setLight(payload: {
   power: boolean;
   brightness: number;
   cct: number;
+  rgbMode?: boolean;
+  red?: number;
+  green?: number;
+  blue?: number;
 }): Promise<{ ok: boolean }> {
   return request("/api/light", {
     method: "POST",

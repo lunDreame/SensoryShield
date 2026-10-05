@@ -6,7 +6,7 @@
 #include "common/device/Illuminance.h"
 #include "common/device/Occupancy.h"
 #include "peripheral/BH1750.h"
-#include "peripheral/CCTLight.h"
+#include "peripheral/WS2812B.h"
 #include "peripheral/Fan.h"
 #include "peripheral/Mic.h"
 #include "peripheral/PIR.h"
@@ -49,7 +49,7 @@ int System::Initialize() {
 
     const AppConfig config = GetMemory()->Config();
     LOG_INF("Config loaded for runtime");
-    mManualTarget = {false, config.minBrightness, config.maxCCTMireds, false, 0, 0.0f};
+    mManualTarget = {false, config.minBrightness, config.maxCCTMireds, false, 255, 255, 255, false, 0, 0.0f};
 
     LOG_INF("Initializing peripherals");
     ret = InitializePeripherals();
@@ -110,7 +110,7 @@ int System::InitializePeripherals() {
         firstError = ret;
     }
 
-    ret = GetCCTLight()->Initialize();
+    ret = GetWS2812B()->Initialize();
     if (ret != 0 && firstError == 0) {
         firstError = ret;
     }
@@ -171,7 +171,7 @@ int System::RestoreChildDevices() {
 
     if (count == 0U) {
         const ChildDeviceDescriptor defaults[] = {
-            {1, 0x010C, true, 3, "CCT Light"},
+            {1, 0x010C, true, 3, "WS2812B Light"},
             {2, 0x002B, true, 4, "Fan"},
             {3, 0x0107, true, 5, "Occupancy"},
             {4, 0x0106, true, 6, "Illuminance"},
@@ -268,6 +268,11 @@ uint32_t System::OverrideRemainingSeconds() const {
 }
 
 int System::SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMireds) {
+    return SetManualLight(on, brightnessPercent, cctMireds, false, 255, 255, 255);
+}
+
+int System::SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
+                           uint8_t green, uint8_t blue) {
     ControlTarget next = mManualTarget;
     if (mMode != ControlMode::Manual && mMode != ControlMode::Override) {
         const FanState fan = GetFanDevice()->CurrentState();
@@ -277,15 +282,25 @@ int System::SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMired
     next.lightOn = on;
     next.brightnessPercent = brightnessPercent;
     next.cctMireds = cctMireds;
-    const int ret = GetLightDevice()->ApplyTarget(next.lightOn, next.brightnessPercent, next.cctMireds);
+    next.rgbMode = rgbMode;
+    next.red = red;
+    next.green = green;
+    next.blue = blue;
+    const int ret = GetLightDevice()->ApplyTarget(next.lightOn, next.brightnessPercent, next.cctMireds, next.rgbMode,
+                                                 next.red, next.green, next.blue);
     if (ret != 0) {
         return ret;
     }
     mManualTarget = next;
     mTarget = next;
-    mAppliedTarget.lightOn = GetLightDevice()->CurrentState().on;
-    mAppliedTarget.brightnessPercent = GetLightDevice()->CurrentState().brightnessPercent;
-    mAppliedTarget.cctMireds = GetLightDevice()->CurrentState().cctMireds;
+    const LightState light = GetLightDevice()->CurrentState();
+    mAppliedTarget.lightOn = light.on;
+    mAppliedTarget.brightnessPercent = light.brightnessPercent;
+    mAppliedTarget.cctMireds = light.cctMireds;
+    mAppliedTarget.rgbMode = light.rgbMode;
+    mAppliedTarget.red = light.red;
+    mAppliedTarget.green = light.green;
+    mAppliedTarget.blue = light.blue;
     return SetMode(ControlMode::Manual);
 }
 
@@ -296,6 +311,10 @@ int System::SetManualFan(bool on, uint8_t speedPercent) {
         next.lightOn = light.on;
         next.brightnessPercent = light.brightnessPercent;
         next.cctMireds = light.cctMireds;
+        next.rgbMode = light.rgbMode;
+        next.red = light.red;
+        next.green = light.green;
+        next.blue = light.blue;
     }
     next.fanOn = on;
     next.fanPercent = speedPercent;
@@ -383,14 +402,10 @@ void System::AlgorithmWork() {
     }
     if (mMode == ControlMode::Auto) {
         mTarget = GetAlgorithm()->Evaluate(mSnapshot);
-        const int ret = ApplyTarget(mTarget);
-        if (ret != 0) {
-            LOG_ERR("AUTO apply failed: %d", ret);
-        }
     } else if (mMode == ControlMode::Manual || mMode == ControlMode::Override) {
         mTarget = mManualTarget;
     } else {
-        mTarget = {false, 0, GetMemory()->Config().maxCCTMireds, false, 0, 0.0f};
+        mTarget = {false, 0, GetMemory()->Config().maxCCTMireds, false, 255, 255, 255, false, 0, 0.0f};
     }
 
     SyncMatterDirtyDevices(false);
@@ -418,6 +433,10 @@ void System::ActuatorRampWork() {
     next.lightOn = mTarget.lightOn || (mAppliedTarget.lightOn && next.brightnessPercent > 0U);
     next.fanOn = mTarget.fanOn || (mAppliedTarget.fanOn && next.fanPercent > 0U);
     next.cctMireds = stepCct(mAppliedTarget.cctMireds, mTarget.cctMireds);
+    next.rgbMode = mTarget.rgbMode;
+    next.red = mTarget.red;
+    next.green = mTarget.green;
+    next.blue = mTarget.blue;
     next.sensoryScore = mTarget.sensoryScore;
     if (next != mAppliedTarget) {
         mAppliedTarget = next;
@@ -439,9 +458,10 @@ void System::SyncMatterDirtyDevices(bool force) {
 }
 
 int System::ApplyTarget(const ControlTarget& target) {
-    int ret = GetLightDevice()->ApplyTarget(target.lightOn, target.brightnessPercent, target.cctMireds);
+    int ret = GetLightDevice()->ApplyTarget(target.lightOn, target.brightnessPercent, target.cctMireds, target.rgbMode,
+                                            target.red, target.green, target.blue);
     if (ret != 0) {
-        LOG_ERR("CCT apply failed: %d", ret);
+        LOG_ERR("WS2812B apply failed: %d", ret);
         return ret;
     }
 
@@ -455,7 +475,7 @@ int System::ApplyTarget(const ControlTarget& target) {
 
 void System::SetSafeState() {
     mMode = ControlMode::Safe;
-    mTarget = {false, 0, GetMemory()->Config().maxCCTMireds, false, 0, 0.0f};
+    mTarget = {false, 0, GetMemory()->Config().maxCCTMireds, false, 255, 255, 255, false, 0, 0.0f};
 }
 
 void System::OnModeChanged(ControlMode previous, ControlMode current) {

@@ -10,6 +10,8 @@ class WebServer final {
 
     int Initialize();
     int HandleLightCommand(bool on, uint8_t brightnessPercent, uint16_t cctMireds);
+    int HandleLightCommand(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
+                           uint8_t green, uint8_t blue);
     int HandleFanCommand(bool on, uint8_t speedPercent);
     int HandleModeCommand(ControlMode mode, uint32_t overrideDurationMinutes = 15U);
     int HandleProfileUpdate(const AppConfig& config);

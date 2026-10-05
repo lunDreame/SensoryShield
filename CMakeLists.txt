@@ -69,7 +69,7 @@ target_sources(app PRIVATE
     src/peripheral/BH1750.cpp
     src/peripheral/PIR.cpp
     src/peripheral/Mic.cpp
-    src/peripheral/CCTLight.cpp
+    src/peripheral/WS2812B.cpp
     src/peripheral/Fan.cpp
     src/system/web_assets.cpp
     ${CHIP_ROOT}/src/app/persistence/DeferredAttributePersistenceProvider.cpp

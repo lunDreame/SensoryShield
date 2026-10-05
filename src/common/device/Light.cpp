@@ -1,7 +1,7 @@
 #include "common/device/Light.h"
 
 #include "definition.h"
-#include "peripheral/CCTLight.h"
+#include "peripheral/WS2812B.h"
 #include "system/matter_bridge.h"
 #include "system/memory.h"
 
@@ -18,7 +18,7 @@ LightDevice& LightDevice::Instance() {
 
 int LightDevice::Initialize() {
     const AppConfig config = GetMemory()->Config();
-    mCurrentState = {false, 0, config.maxCCTMireds};
+    mCurrentState = {false, 0, config.maxCCTMireds, false, 255, 255, 255};
     mPreviousPublished = mCurrentState;
     mLastOnBrightnessPercent = 50;
     MarkMatterDirty();
@@ -50,8 +50,9 @@ int LightDevice::UpdateToMatter(bool force) {
 
     mPreviousPublished = mCurrentState;
     ClearMatterDirty();
-    LOG_INF("Light changed: on=%d brightness=%u cct=%u", mCurrentState.on, mCurrentState.brightnessPercent,
-            mCurrentState.cctMireds);
+    LOG_INF("Light changed: on=%d brightness=%u cct=%u rgb=%d (%u,%u,%u)", mCurrentState.on,
+            mCurrentState.brightnessPercent, mCurrentState.cctMireds, mCurrentState.rgbMode, mCurrentState.red,
+            mCurrentState.green, mCurrentState.blue);
     return 0;
 }
 
@@ -75,26 +76,31 @@ int LightDevice::ApplyCommand(const DeviceCommand& command) {
         break;
     case DeviceCommandType::SetCCT:
         target.cctMireds = command.mireds;
+        target.rgbMode = false;
         break;
     default:
         return 0;
     }
 
-    return ApplyTarget(target.on, target.brightnessPercent, target.cctMireds);
+    return ApplyTarget(target.on, target.brightnessPercent, target.cctMireds, target.rgbMode, target.red, target.green,
+                       target.blue);
 }
 
 int LightDevice::ApplyTarget(bool on, uint8_t brightnessPercent, uint16_t cctMireds) {
+    return ApplyTarget(on, brightnessPercent, cctMireds, false, 255, 255, 255);
+}
+
+int LightDevice::ApplyTarget(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
+                             uint8_t green, uint8_t blue) {
     const AppConfig config = GetMemory()->Config();
     LightState next = {on, static_cast<uint8_t>(on ? ClampValue<uint8_t>(brightnessPercent, 0, 100) : 0),
-                          ClampValue<uint16_t>(cctMireds, config.minCCTMireds, config.maxCCTMireds)};
+                       ClampValue<uint16_t>(cctMireds, config.minCCTMireds, config.maxCCTMireds), rgbMode, red, green,
+                       blue};
 
-    int ret = GetCCTLight()->SetCCTRatio(MiredsToCoolPercent(next.cctMireds));
-    if (ret == 0) {
-        ret = GetCCTLight()->SetBrightness(next.brightnessPercent);
-    }
-    if (ret == 0) {
-        ret = GetCCTLight()->SetPower(next.on);
-    }
+    const int ret = next.rgbMode
+                        ? GetWS2812B()->SetRgbTarget(next.on, next.brightnessPercent, next.red, next.green, next.blue)
+                        : GetWS2812B()->SetWhiteTarget(next.on, next.brightnessPercent,
+                                                       MiredsToCoolPercent(next.cctMireds));
     if (ret != 0) {
         return ret;
     }
