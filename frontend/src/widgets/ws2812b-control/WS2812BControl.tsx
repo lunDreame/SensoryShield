@@ -95,7 +95,7 @@ export function WS2812BControl({ outputs, available, mode }: WS2812BControlProps
   const hexColor = toHexColor(red, green, blue);
 
   return (
-    <Panel title="WS2812B 조명" subtitle="네오픽셀 링의 밝기, 백색 톤, RGB 색상을 조절합니다." className="control-panel"
+    <Panel title="조명" subtitle="밝기, 빛의 따뜻함, 원하는 색상을 조절합니다." className="control-panel"
       icon={<img className="panel-icon" src="/illustrations/light-control.png" alt="" />}
       action={<span className={`badge mode-badge mode-${mode.toLowerCase()}`}>{{ AUTO: "자동", MANUAL: "수동", OVERRIDE: "잠시 사용", SAFE: "안전" }[mode]} 모드</span>}>
       <div className="control-row">
@@ -118,11 +118,11 @@ export function WS2812BControl({ outputs, available, mode }: WS2812BControlProps
         <b className="control-value">{brightness}%</b>
       </label>
       <div className="control-caption"><span>은은하게</span><span>밝게</span></div>
-      <div className="segmented light-mode-toggle" role="group" aria-label="WS2812B 색상 모드">
+      <div className="segmented light-mode-toggle" role="group" aria-label="조명 색상 모드">
         <button className={colorMode === "WHITE" ? "active" : ""} type="button" disabled={!available}
           onClick={() => { setColorMode("WHITE"); markDirty(); }}>색온도</button>
         <button className={colorMode === "RGB" ? "active" : ""} type="button" disabled={!available}
-          onClick={() => { setColorMode("RGB"); markDirty(); }}>RGB</button>
+          onClick={() => { setColorMode("RGB"); markDirty(); }}>색상</button>
       </div>
       {colorMode === "WHITE" ? (
         <>
@@ -145,11 +145,11 @@ export function WS2812BControl({ outputs, available, mode }: WS2812BControlProps
       ) : (
         <div className="rgb-picker">
           <label className="color-field">
-            <span>RGB 색상</span>
+            <span>원하는 색상</span>
             <input type="color" value={hexColor} disabled={!available} onChange={(event) => updateColor(event.target.value)} />
             <b>{hexColor.toUpperCase()}</b>
           </label>
-          <div className="rgb-values" aria-label="RGB 채널 값">
+          <div className="rgb-values" aria-label="색상 값">
             <span>R {red}</span>
             <span>G {green}</span>
             <span>B {blue}</span>
