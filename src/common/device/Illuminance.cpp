@@ -64,7 +64,8 @@ int IlluminanceDevice::UpdateToMatter(bool force) {
     }
     mPreviousValid = mValid;
     ClearMatterDirty();
-    LOG_INF("Illuminance published: %s", mValid ? "valid" : "invalid");
+    const int32_t luxTenths = static_cast<int32_t>((mCurrentLux * 10.0f) + 0.5f);
+    LOG_INF("Illuminance published: lux=%d.%u", luxTenths / 10, static_cast<unsigned int>(luxTenths % 10));
     return 0;
 }
 
