@@ -3,5 +3,8 @@ build*/
 docs/*.docx
 docs/*.pdf
 frontend/dist/
+frontend/.env
+frontend/.env.local
+frontend/.env.*.local
 frontend/node_modules/
 frontend/tsconfig.tsbuildinfo

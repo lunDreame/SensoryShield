@@ -21,7 +21,7 @@
         compatible = "pwm-leds";
 
         fan_pwm: fan_pwm {
-            pwms = <&pwm20 2 PWM_USEC(1000) PWM_POLARITY_NORMAL>;
+            pwms = <&pwm20 2 PWM_USEC(30303) PWM_POLARITY_NORMAL>;
         };
     };
 
@@ -34,15 +34,7 @@
         };
     };
 
-    ws2812b_ring: ws2812b-ring {
-        compatible = "worldsemi,ws2812-gpio";
-        gpios = <&gpio3 0 GPIO_ACTIVE_HIGH>;
-        chain-length = <12>;
-        color-mapping = <LED_COLOR_ID_GREEN
-                         LED_COLOR_ID_RED
-                         LED_COLOR_ID_BLUE>;
-        reset-delay = <50>;
-    };
+    /delete-node/ ws2812b-ring;
 };
 
 &mx25r64 {
@@ -73,6 +65,25 @@ dmic_dev: &pdm20 {
     status = "okay";
     pinctrl-0 = <&pdm20_default>;
     pinctrl-names = "default";
+};
+
+&spi22 {
+    status = "okay";
+    /delete-property/ cs-gpios;
+
+    ws2812b_ring: ws2812b@0 {
+        compatible = "worldsemi,ws2812-spi";
+        reg = <0>;
+        spi-max-frequency = <4000000>;
+        bits-per-symbol = <4>;
+        spi-zero-frame = <0x4>;
+        spi-one-frame = <0x7>;
+        chain-length = <12>;
+        color-mapping = <LED_COLOR_ID_GREEN
+                         LED_COLOR_ID_RED
+                         LED_COLOR_ID_BLUE>;
+        reset-delay = <300>;
+    };
 };
 
 &pinctrl {
@@ -108,6 +119,12 @@ dmic_dev: &pdm20 {
         group1 {
             psels = <NRF_PSEL(PDM_CLK, 1, 14)>,
                     <NRF_PSEL(PDM_DIN, 1, 11)>;
+        };
+    };
+
+    spi22_default {
+        group1 {
+            nordic,drive-mode = <NRF_DRIVE_E0E1>;
         };
     };
 };

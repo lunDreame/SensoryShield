@@ -4,9 +4,9 @@
 
 #include <stddef.h>
 
-class WebServer final {
+class ThreadRest final {
   public:
-    static WebServer& Instance();
+    static ThreadRest& Instance();
 
     int Initialize();
     int HandleLightCommand(bool on, uint8_t brightnessPercent, uint16_t cctMireds);
@@ -20,14 +20,14 @@ class WebServer final {
     int BuildProfileJson(char* buffer, size_t bufferSize) const;
     int BuildDiagnosticsJson(char* buffer, size_t bufferSize) const;
 
-    WebServer(const WebServer&) = delete;
-    WebServer& operator=(const WebServer&) = delete;
+    ThreadRest(const ThreadRest&) = delete;
+    ThreadRest& operator=(const ThreadRest&) = delete;
 
   private:
-    WebServer() = default;
-    ~WebServer() = default;
+    ThreadRest() = default;
+    ~ThreadRest() = default;
 };
 
-inline WebServer* GetWebServer() {
-    return &WebServer::Instance();
+inline ThreadRest* GetThreadRest() {
+    return &ThreadRest::Instance();
 }

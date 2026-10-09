@@ -55,8 +55,9 @@ target_sources(app PRIVATE
     src/main.cpp
     src/system/system.cpp
     src/system/memory.cpp
-    src/system/webserver.cpp
     src/system/matter_bridge.cpp
+    src/system/threadrest.cpp
+    src/system/web_assets.cpp
     src/common/algorithm/algorithm.cpp
     src/common/algorithm/baseline.cpp
     src/common/algorithm/light_presence.cpp
@@ -71,7 +72,6 @@ target_sources(app PRIVATE
     src/peripheral/Mic.cpp
     src/peripheral/WS2812B.cpp
     src/peripheral/Fan.cpp
-    src/system/web_assets.cpp
     ${CHIP_ROOT}/src/app/persistence/DeferredAttributePersistenceProvider.cpp
 )
 
@@ -79,6 +79,6 @@ ncs_configure_data_model()
 
 zephyr_linker_sources(SECTIONS sections-rom.ld)
 zephyr_linker_section_ifdef(CONFIG_HTTP_SERVER NAME
-    http_resource_desc_sensoryshield_http
+    http_resource_desc_sensoryshield_thread_rest
     KVMA RAM_REGION GROUP RODATA_REGION
 )

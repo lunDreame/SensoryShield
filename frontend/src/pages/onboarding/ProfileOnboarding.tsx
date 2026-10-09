@@ -53,7 +53,7 @@ export function ProfileOnboarding({ initialConfig, onComplete }: ProfileOnboardi
       await saveProfile(config);
       onComplete(config);
     } catch {
-      setError("기기에 설정을 저장하지 못했어요. USB 연결을 확인한 뒤 다시 시도해 주세요.");
+      setError("기기에 설정을 저장하지 못했어요. 기기 연결을 확인한 뒤 다시 시도해 주세요.");
     } finally {
       setPending(false);
     }

@@ -12,10 +12,11 @@
 #include "peripheral/PIR.h"
 #include "system/matter_bridge.h"
 #include "system/memory.h"
-#include "system/webserver.h"
+#include "system/threadrest.h"
 
 #include <errno.h>
 #include <string.h>
+#include <zephyr/devicetree.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
 
@@ -23,6 +24,12 @@ LOG_MODULE_REGISTER(system, LOG_LEVEL_INF);
 
 namespace {
 constexpr size_t kMatterDispatchStackSize = 4096;
+constexpr uint8_t kStatusBrightnessPercent = 25;
+constexpr uint8_t kStatusBrightnessStep = 2;
+constexpr uint32_t kStatusBlinkMs = 40;
+#if DT_NODE_HAS_STATUS(DT_ALIAS(sw0), okay)
+const struct gpio_dt_spec factoryResetButton = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
+#endif
 K_THREAD_STACK_DEFINE(matterDispatchStack, kMatterDispatchStackSize);
 struct k_thread matterDispatchThread;
 } // namespace
@@ -31,6 +38,8 @@ System::System() {
     k_work_init_delayable(&mSensorWork, SensorWorkHandler);
     k_work_init_delayable(&mAlgorithmWork, AlgorithmWorkHandler);
     k_work_init_delayable(&mActuatorRampWork, ActuatorRampWorkHandler);
+    k_work_init_delayable(&mStatusLedWork, StatusLedWorkHandler);
+    k_work_init(&mFactoryResetButtonWork, FactoryResetButtonWorkHandler);
 }
 
 System& System::Instance() {
@@ -40,6 +49,7 @@ System& System::Instance() {
 
 int System::Initialize() {
     LOG_INF("System init");
+    bool bootError = false;
 
     int ret = GetMemory()->Initialize();
     if (ret != 0) {
@@ -55,38 +65,52 @@ int System::Initialize() {
     ret = InitializePeripherals();
     if (ret != 0) {
         mMode = ControlMode::Safe;
+        bootError = true;
         LOG_WRN("Peripheral init incomplete: %d", ret);
     }
 
     ret = GetAlgorithm()->Initialize(GetMemory()->Config());
     if (ret != 0) {
         SetSafeState();
+        ShowErrorStatus();
         return ret;
     }
 
     ret = InitializeMatter();
     if (ret != 0) {
+        bootError = true;
         LOG_WRN("Matter init deferred: %d", ret);
     }
 
     ret = RestoreChildDevices();
     if (ret != 0) {
         SetSafeState();
+        ShowErrorStatus();
         return ret;
     }
 
-    ret = GetWebServer()->Initialize();
+    ret = GetThreadRest()->Initialize();
     if (ret != 0) {
-        LOG_WRN("Web init deferred: %d", ret);
+        LOG_WRN("Thread REST init deferred: %d", ret);
     }
 
     ret = InitializeWorks();
     if (ret != 0) {
         SetSafeState();
+        ShowErrorStatus();
         return ret;
     }
 
     mReady = true;
+    if (bootError) {
+        ShowErrorStatus();
+    } else if (!GetMatterBridge()->Commissioned()) {
+        if (GetMatterBridge()->CommissioningActive()) {
+            ShowCommissioningStatus();
+        } else {
+            ShowBootOkStatus();
+        }
+    }
     LOG_INF("System ready");
     return 0;
 }
@@ -120,7 +144,46 @@ int System::InitializePeripherals() {
         firstError = ret;
     }
 
+    ret = InitializeResetButton();
+    if (ret != 0) {
+        LOG_WRN("Reset button unavailable: %d", ret);
+    }
+
     return firstError;
+}
+
+int System::InitializeResetButton() {
+#if DT_NODE_HAS_STATUS(DT_ALIAS(sw0), okay)
+    if (!gpio_is_ready_dt(&factoryResetButton)) {
+        LOG_ERR("Button0 GPIO not ready");
+        return -ENODEV;
+    }
+
+    int ret = gpio_pin_configure_dt(&factoryResetButton, GPIO_INPUT);
+    if (ret != 0) {
+        LOG_ERR("Button0 configure failed: %d", ret);
+        return ret;
+    }
+
+    ret = gpio_pin_interrupt_configure_dt(&factoryResetButton, GPIO_INT_EDGE_TO_ACTIVE);
+    if (ret != 0) {
+        LOG_ERR("Button0 interrupt configure failed: %d", ret);
+        return ret;
+    }
+
+    gpio_init_callback(&mFactoryResetButtonCallback, FactoryResetButtonCallback, BIT(factoryResetButton.pin));
+    ret = gpio_add_callback(factoryResetButton.port, &mFactoryResetButtonCallback);
+    if (ret != 0) {
+        LOG_ERR("Button0 callback add failed: %d", ret);
+        return ret;
+    }
+
+    LOG_INF("Button0 factory reset ready");
+    return 0;
+#else
+    LOG_WRN("Button0 alias sw0 missing");
+    return -ENODEV;
+#endif
 }
 
 int System::InitializeMatter() {
@@ -354,6 +417,33 @@ int System::FactoryReset() {
     return 0;
 }
 
+void System::FactoryResetButtonCallback(const struct device* port, struct gpio_callback* callback,
+                                        gpio_port_pins_t pins) {
+    ARG_UNUSED(port);
+    ARG_UNUSED(callback);
+    ARG_UNUSED(pins);
+    k_work_submit(&GetSystem()->mFactoryResetButtonWork);
+}
+
+void System::FactoryResetButtonWorkHandler(struct k_work* work) {
+    System* system = CONTAINER_OF(work, System, mFactoryResetButtonWork);
+    system->FactoryResetButtonWork();
+}
+
+void System::FactoryResetButtonWork() {
+    if (mFactoryResetRequested) {
+        return;
+    }
+
+    mFactoryResetRequested = true;
+    LOG_WRN("Button0 requested system + Matter factory reset");
+    const int ret = FactoryReset();
+    if (ret != 0) {
+        mFactoryResetRequested = false;
+        LOG_ERR("Button0 factory reset failed: %d", ret);
+    }
+}
+
 void System::SensorWorkHandler(struct k_work* work) {
     System* system = CONTAINER_OF(k_work_delayable_from_work(work), System, mSensorWork);
     system->SensorWork();
@@ -367,6 +457,11 @@ void System::AlgorithmWorkHandler(struct k_work* work) {
 void System::ActuatorRampWorkHandler(struct k_work* work) {
     System* system = CONTAINER_OF(k_work_delayable_from_work(work), System, mActuatorRampWork);
     system->ActuatorRampWork();
+}
+
+void System::StatusLedWorkHandler(struct k_work* work) {
+    System* system = CONTAINER_OF(k_work_delayable_from_work(work), System, mStatusLedWork);
+    system->StatusLedWork();
 }
 
 void System::MatterDispatchThread(void* first, void* second, void* third) {
@@ -448,6 +543,41 @@ void System::ActuatorRampWork() {
     k_work_schedule(&mActuatorRampWork, K_MSEC(ACTUATOR_RAMP_MS));
 }
 
+void System::StatusLedWork() {
+    if (!mStatusLedActive) {
+        return;
+    }
+
+    if (mStatusLedIncreasing) {
+        const uint8_t next = static_cast<uint8_t>(mStatusLedBrightness + kStatusBrightnessStep);
+        mStatusLedBrightness = next >= kStatusBrightnessPercent ? kStatusBrightnessPercent : next;
+        if (mStatusLedBrightness >= kStatusBrightnessPercent) {
+            mStatusLedIncreasing = false;
+        }
+    } else {
+        mStatusLedBrightness = mStatusLedBrightness > kStatusBrightnessStep
+                                   ? static_cast<uint8_t>(mStatusLedBrightness - kStatusBrightnessStep)
+                                   : 0;
+        if (mStatusLedBrightness == 0U) {
+            mStatusLedIncreasing = true;
+            if (mStatusLedPulsesRemaining > 0U) {
+                --mStatusLedPulsesRemaining;
+                if (mStatusLedPulsesRemaining == 0U) {
+                    mStatusLedActive = false;
+                    if (mStatusLedRestoreWhenDone) {
+                        RestoreControlLed();
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
+    GetWS2812B()->SetRgbTarget(mStatusLedBrightness > 0U, mStatusLedBrightness, mStatusLedRed, mStatusLedGreen,
+                               mStatusLedBlue);
+    k_work_schedule(&mStatusLedWork, K_MSEC(kStatusBlinkMs));
+}
+
 void System::SyncMatterDirtyDevices(bool force) {
     Device* devices[] = {GetLightDevice(), GetFanDevice(), GetOccupancyDevice(), GetIlluminanceDevice()};
     for (size_t index = 0; index < ARRAY_SIZE(devices); ++index) {
@@ -458,11 +588,14 @@ void System::SyncMatterDirtyDevices(bool force) {
 }
 
 int System::ApplyTarget(const ControlTarget& target) {
-    int ret = GetLightDevice()->ApplyTarget(target.lightOn, target.brightnessPercent, target.cctMireds, target.rgbMode,
+    int ret = 0;
+    if (!mStatusLedActive) {
+        ret = GetLightDevice()->ApplyTarget(target.lightOn, target.brightnessPercent, target.cctMireds, target.rgbMode,
                                             target.red, target.green, target.blue);
-    if (ret != 0) {
-        LOG_ERR("WS2812B apply failed: %d", ret);
-        return ret;
+        if (ret != 0) {
+            LOG_ERR("WS2812B apply failed: %d", ret);
+            return ret;
+        }
     }
 
     ret = GetFanDevice()->ApplyTarget(target.fanOn, target.fanPercent);
@@ -483,4 +616,42 @@ void System::OnModeChanged(ControlMode previous, ControlMode current) {
         return;
     }
     LOG_INF("Mode changed: %u -> %u", static_cast<unsigned int>(previous), static_cast<unsigned int>(current));
+}
+
+void System::ShowBootOkStatus() {
+    StartStatusLed(255, 255, 255, 0, false);
+}
+
+void System::ShowErrorStatus() {
+    StartStatusLed(255, 0, 0, 0, false);
+}
+
+void System::ShowCommissioningStatus() {
+    StartStatusLed(0, 0, 255, 0, false);
+}
+
+void System::ShowCommissioningCompleteStatus() {
+    StartStatusLed(0, 255, 0, 3, true);
+}
+
+void System::StartStatusLed(uint8_t red, uint8_t green, uint8_t blue, uint8_t pulses, bool restoreWhenDone) {
+    k_work_cancel_delayable(&mStatusLedWork);
+    mStatusLedActive = true;
+    mStatusLedRestoreWhenDone = restoreWhenDone;
+    mStatusLedIncreasing = true;
+    mStatusLedRed = red;
+    mStatusLedGreen = green;
+    mStatusLedBlue = blue;
+    mStatusLedBrightness = 0;
+    mStatusLedPulsesRemaining = pulses;
+    k_work_schedule(&mStatusLedWork, K_NO_WAIT);
+}
+
+void System::RestoreControlLed() {
+    const int ret = GetLightDevice()->ApplyTarget(mAppliedTarget.lightOn, mAppliedTarget.brightnessPercent,
+                                                  mAppliedTarget.cctMireds, mAppliedTarget.rgbMode, mAppliedTarget.red,
+                                                  mAppliedTarget.green, mAppliedTarget.blue);
+    if (ret != 0) {
+        LOG_ERR("Control LED restore failed: %d", ret);
+    }
 }

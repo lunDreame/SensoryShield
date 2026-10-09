@@ -2,11 +2,11 @@
 
 #include <errno.h>
 #include <math.h>
-#include <zephyr/audio/dmic.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/audio/dmic.h>
 
 LOG_MODULE_REGISTER(mic, LOG_LEVEL_INF);
 

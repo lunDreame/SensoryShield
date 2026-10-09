@@ -75,7 +75,7 @@ export function ChildModePage({ status, connectionError }: ChildModePageProps) {
       <section className="child-comfort-card" aria-labelledby="child-room-title">
         <span className="child-kicker">우리 집</span>
         <h1 id="child-room-title">{roomMessage(status)}</h1>
-        <p>{status.system.ready ? "불편한 것이 있다면 아래에서 알려주세요." : connectionError ? "USB 연결을 확인해 주세요." : "연결되면 방의 상태를 알려드릴게요."}</p>
+        <p>{status.system.ready ? "불편한 것이 있다면 아래에서 알려주세요." : connectionError ? "기기 연결을 확인해 주세요." : "연결되면 방의 상태를 알려드릴게요."}</p>
         <div className={`child-room-orb${status.system.ready && status.sensor.sensoryScore >= 5.6 ? " is-strong" : ""}`} aria-hidden="true">
           <img src="/illustrations/child-at-home.png" alt="" />
         </div>

@@ -25,6 +25,9 @@ class MatterBridge final {
     bool ThreadAttached() const {
         return mThreadAttached;
     }
+    bool CommissioningActive() const {
+        return mCommissioningActive;
+    }
     uint8_t FabricCount() const {
         return mFabricCount;
     }
@@ -39,6 +42,7 @@ class MatterBridge final {
 
     bool mReady = false;
     bool mCommissioned = false;
+    bool mCommissioningActive = false;
     bool mThreadAttached = false;
     uint8_t mFabricCount = 0;
 };

@@ -709,14 +709,34 @@ int MatterBridge::Initialize() {
 void MatterBridge::HandleEvent(const DeviceLayer::ChipDeviceEvent* event, intptr_t) {
     MatterBridge& bridge = Instance();
     switch (event->Type) {
+    case DeviceLayer::DeviceEventType::kCHIPoBLEAdvertisingChange:
+        bridge.mCommissioningActive =
+            event->CHIPoBLEAdvertisingChange.Result == DeviceLayer::kActivity_Started && !bridge.mCommissioned;
+        if (!bridge.mCommissioned) {
+            if (bridge.mCommissioningActive) {
+                GetSystem()->ShowCommissioningStatus();
+            } else {
+                GetSystem()->ShowBootOkStatus();
+            }
+        }
+        LOG_INF("BLE commissioning advertising %s", bridge.mCommissioningActive ? "started" : "stopped");
+        break;
     case DeviceLayer::DeviceEventType::kCommissioningComplete:
         bridge.mFabricCount = Server::GetInstance().GetFabricTable().FabricCount();
         bridge.mCommissioned = bridge.mFabricCount > 0U;
+        bridge.mCommissioningActive = false;
+        if (bridge.mCommissioned) {
+            GetSystem()->ShowCommissioningCompleteStatus();
+        }
         LOG_INF("Commissioning complete: fabrics=%u", bridge.mFabricCount);
         break;
     case DeviceLayer::DeviceEventType::kFailSafeTimerExpired:
         bridge.mFabricCount = Server::GetInstance().GetFabricTable().FabricCount();
         bridge.mCommissioned = bridge.mFabricCount > 0U;
+        bridge.mCommissioningActive = false;
+        if (!bridge.mCommissioned) {
+            GetSystem()->ShowErrorStatus();
+        }
         LOG_WRN("Commissioning failed: fail-safe expired");
         break;
     case DeviceLayer::DeviceEventType::kServerReady:
@@ -729,6 +749,7 @@ void MatterBridge::HandleEvent(const DeviceLayer::ChipDeviceEvent* event, intptr
         break;
     case DeviceLayer::DeviceEventType::kFactoryReset:
         bridge.mCommissioned = false;
+        bridge.mCommissioningActive = false;
         bridge.mThreadAttached = false;
         bridge.mFabricCount = 0;
         LOG_INF("Matter factory reset started");
@@ -847,6 +868,7 @@ int MatterBridge::FactoryReset() {
     }
 
     mCommissioned = false;
+    mCommissioningActive = false;
     mThreadAttached = false;
     mFabricCount = 0;
     mReady = false;

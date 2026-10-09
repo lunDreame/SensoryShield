@@ -1,4 +1,4 @@
-#include "system/webserver.h"
+#include "system/threadrest.h"
 
 #include "common/device/Light.h"
 #include "common/device/Fan.h"
@@ -13,26 +13,22 @@
 #include <zephyr/device.h>
 #include <zephyr/net/http/server.h>
 #include <zephyr/net/http/service.h>
-#include <zephyr/net/net_config.h>
-#include <zephyr/net/dhcpv4_server.h>
-#include <zephyr/net/net_if.h>
 #include <zephyr/sys/util.h>
-#include <zephyr/usb/usb_device.h>
 #include <zephyr/logging/log.h>
 
-LOG_MODULE_REGISTER(webserver, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(threadrest, LOG_LEVEL_INF);
 
-#define HTTP_PORT 80U
-#define HTTP_REQUEST_CAPACITY 320U
-#define HTTP_RESPONSE_CAPACITY 1024U
+#define THREAD_REST_PORT 80U
+#define THREAD_REST_REQUEST_CAPACITY 320U
+#define THREAD_REST_RESPONSE_CAPACITY 1024U
 
 enum class ApiRoute : uint8_t { Status, Light, Fan, Mode, Profile, Diagnostics, FactoryReset };
 
 struct ApiContext {
     ApiRoute route;
-    char request[HTTP_REQUEST_CAPACITY];
+    char request[THREAD_REST_REQUEST_CAPACITY];
     size_t requestLength;
-    char response[HTTP_RESPONSE_CAPACITY];
+    char response[THREAD_REST_RESPONSE_CAPACITY];
 };
 
 struct LightRequest {
@@ -131,8 +127,8 @@ const StaticAsset* kJavaScriptAsset = &kAppJavaScript;
 const StaticAsset* kStylesheetAsset = &kAppStylesheet;
 constexpr int kLightRequiredFields = BIT(0) | BIT(1) | BIT(2);
 
-uint16_t servicePort = HTTP_PORT;
-HTTP_SERVICE_DEFINE(sensoryshield_http, nullptr, &servicePort, 2, 2, nullptr, nullptr, nullptr);
+uint16_t servicePort = THREAD_REST_PORT;
+HTTP_SERVICE_DEFINE(sensoryshield_thread_rest, nullptr, &servicePort, 2, 2, nullptr, nullptr, nullptr);
 
 const struct http_header kStaticAssetHeaders[] = {
     {.name = "Cache-Control", .value = "no-cache"},
@@ -179,9 +175,9 @@ STATIC_RESOURCE_DETAIL(indexDetail, "text/html; charset=utf-8", kIndexAsset);
 STATIC_RESOURCE_DETAIL(javaScriptDetail, "application/javascript; charset=utf-8", kJavaScriptAsset);
 STATIC_RESOURCE_DETAIL(stylesheetDetail, "text/css; charset=utf-8", kStylesheetAsset);
 
-HTTP_RESOURCE_DEFINE(indexResource, sensoryshield_http, "/", &indexDetail);
-HTTP_RESOURCE_DEFINE(javaScriptResource, sensoryshield_http, "/assets/app.js", &javaScriptDetail);
-HTTP_RESOURCE_DEFINE(stylesheetResource, sensoryshield_http, "/assets/index.css", &stylesheetDetail);
+HTTP_RESOURCE_DEFINE(indexResource, sensoryshield_thread_rest, "/", &indexDetail);
+HTTP_RESOURCE_DEFINE(javaScriptResource, sensoryshield_thread_rest, "/assets/app.js", &javaScriptDetail);
+HTTP_RESOURCE_DEFINE(stylesheetResource, sensoryshield_thread_rest, "/assets/index.css", &stylesheetDetail);
 
 #undef STATIC_RESOURCE_DETAIL
 
@@ -227,10 +223,10 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
 
     switch (context->route) {
         case ApiRoute::Status:
-            ret = GetWebServer()->BuildStatusJson(context->response, sizeof(context->response));
+            ret = GetThreadRest()->BuildStatusJson(context->response, sizeof(context->response));
             break;
         case ApiRoute::Diagnostics:
-            ret = GetWebServer()->BuildDiagnosticsJson(context->response, sizeof(context->response));
+            ret = GetThreadRest()->BuildDiagnosticsJson(context->response, sizeof(context->response));
             break;
         case ApiRoute::Profile:
             if (isPost) {
@@ -251,11 +247,11 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
                                               payload.fanMaxPercent,
                                               payload.occupancyTimeoutMs,
                                               payload.profileConfigured};
-                    ret = GetWebServer()->HandleProfileUpdate(config);
+                    ret = GetThreadRest()->HandleProfileUpdate(config);
                 }
                 context->requestLength = 0U;
             } else {
-                ret = GetWebServer()->BuildProfileJson(context->response, sizeof(context->response));
+                ret = GetThreadRest()->BuildProfileJson(context->response, sizeof(context->response));
             }
             break;
         case ApiRoute::Light: {
@@ -264,7 +260,7 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
             const int parsed = json_obj_parse(context->request, context->requestLength, kLightFields,
                                               ARRAY_SIZE(kLightFields), &payload);
             ret = (parsed & kLightRequiredFields) == kLightRequiredFields
-                      ? GetWebServer()->HandleLightCommand(payload.power, payload.brightness, payload.cct,
+                      ? GetThreadRest()->HandleLightCommand(payload.power, payload.brightness, payload.cct,
                                                            payload.rgbMode, payload.red, payload.green, payload.blue)
                       : -EINVAL;
             context->requestLength = 0U;
@@ -276,7 +272,7 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
             const int parsed = json_obj_parse(context->request, context->requestLength, kFanFields,
                                               ARRAY_SIZE(kFanFields), &payload);
             ret = parsed == BIT_MASK(ARRAY_SIZE(kFanFields))
-                      ? GetWebServer()->HandleFanCommand(payload.power, payload.speed)
+                      ? GetThreadRest()->HandleFanCommand(payload.power, payload.speed)
                       : -EINVAL;
             context->requestLength = 0U;
             break;
@@ -289,11 +285,11 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
             if (parsed != BIT_MASK(ARRAY_SIZE(kModeFields)) || payload.mode == nullptr) {
                 ret = -EINVAL;
             } else if (strcmp(payload.mode, "AUTO") == 0) {
-                ret = GetWebServer()->HandleModeCommand(ControlMode::Auto, payload.durationMinutes);
+                ret = GetThreadRest()->HandleModeCommand(ControlMode::Auto, payload.durationMinutes);
             } else if (strcmp(payload.mode, "MANUAL") == 0) {
-                ret = GetWebServer()->HandleModeCommand(ControlMode::Manual, payload.durationMinutes);
+                ret = GetThreadRest()->HandleModeCommand(ControlMode::Manual, payload.durationMinutes);
             } else if (strcmp(payload.mode, "OVERRIDE") == 0) {
-                ret = GetWebServer()->HandleModeCommand(ControlMode::Override, payload.durationMinutes);
+                ret = GetThreadRest()->HandleModeCommand(ControlMode::Override, payload.durationMinutes);
             } else {
                 ret = -EINVAL;
             }
@@ -306,7 +302,7 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
             const int parsed = json_obj_parse(context->request, context->requestLength, kResetFields,
                                               ARRAY_SIZE(kResetFields), &payload);
             ret = parsed == BIT_MASK(ARRAY_SIZE(kResetFields)) && payload.confirm
-                      ? GetWebServer()->HandleFactoryReset()
+                      ? GetThreadRest()->HandleFactoryReset()
                       : -EINVAL;
             context->requestLength = 0U;
             break;
@@ -343,79 +339,61 @@ API_RESOURCE_DETAIL(profileDetail, BIT(HTTP_GET) | BIT(HTTP_POST) | BIT(HTTP_OPT
 API_RESOURCE_DETAIL(diagnosticsDetail, BIT(HTTP_GET) | BIT(HTTP_OPTIONS), kDiagnosticsContext);
 API_RESOURCE_DETAIL(resetDetail, BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kResetContext);
 
-HTTP_RESOURCE_DEFINE(statusResource, sensoryshield_http, "/api/status", &statusDetail);
-HTTP_RESOURCE_DEFINE(lightResource, sensoryshield_http, "/api/light", &lightDetail);
-HTTP_RESOURCE_DEFINE(fanResource, sensoryshield_http, "/api/fan", &fanDetail);
-HTTP_RESOURCE_DEFINE(modeResource, sensoryshield_http, "/api/mode", &modeDetail);
-HTTP_RESOURCE_DEFINE(profileResource, sensoryshield_http, "/api/profile", &profileDetail);
-HTTP_RESOURCE_DEFINE(diagnosticsResource, sensoryshield_http, "/api/diagnostics", &diagnosticsDetail);
-HTTP_RESOURCE_DEFINE(resetResource, sensoryshield_http, "/api/factory-reset", &resetDetail);
+HTTP_RESOURCE_DEFINE(statusResource, sensoryshield_thread_rest, "/api/status", &statusDetail);
+HTTP_RESOURCE_DEFINE(lightResource, sensoryshield_thread_rest, "/api/light", &lightDetail);
+HTTP_RESOURCE_DEFINE(fanResource, sensoryshield_thread_rest, "/api/fan", &fanDetail);
+HTTP_RESOURCE_DEFINE(modeResource, sensoryshield_thread_rest, "/api/mode", &modeDetail);
+HTTP_RESOURCE_DEFINE(profileResource, sensoryshield_thread_rest, "/api/profile", &profileDetail);
+HTTP_RESOURCE_DEFINE(diagnosticsResource, sensoryshield_thread_rest, "/api/diagnostics", &diagnosticsDetail);
+HTTP_RESOURCE_DEFINE(resetResource, sensoryshield_thread_rest, "/api/factory-reset", &resetDetail);
 
 #undef API_RESOURCE_DETAIL
-WebServer& WebServer::Instance() {
-    static WebServer instance;
+
+ThreadRest& ThreadRest::Instance() {
+    static ThreadRest instance;
     return instance;
 }
 
-int WebServer::Initialize() {
-    int ret = usb_enable(nullptr);
-    if (ret != 0 && ret != -EALREADY) {
-        LOG_ERR("USB ECM start failed: %d", ret);
-        return ret;
-    }
-
-    ret = net_config_init_app(nullptr, "SensoryShield USB network");
-    if (ret != 0) {
-        LOG_ERR("USB network setup failed: %d", ret);
-        return ret;
-    }
-
-    struct net_in_addr leaseStart = {.s4_addr = {192U, 0U, 2U, 2U}};
-    ret = net_dhcpv4_server_start(net_if_get_default(), &leaseStart);
-    if (ret != 0) {
-        LOG_ERR("USB DHCP server start failed: %d", ret);
-        return ret;
-    }
-
-    ret = http_server_start();
+int ThreadRest::Initialize() {
+    int ret = http_server_start();
     if (ret != 0 && ret != -EALREADY) {
         LOG_ERR("HTTP server start failed: %d", ret);
         return ret;
     }
 
-    LOG_INF("USB REST ready at http://192.0.2.1");
+    LOG_INF("Thread REST server ready on IPv6 port %u", servicePort);
     return 0;
 }
 
-int WebServer::HandleLightCommand(bool on, uint8_t brightnessPercent, uint16_t cctMireds) {
+int ThreadRest::HandleLightCommand(bool on, uint8_t brightnessPercent, uint16_t cctMireds) {
     return GetSystem()->SetManualLight(on, brightnessPercent, cctMireds);
 }
 
-int WebServer::HandleLightCommand(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
+int ThreadRest::HandleLightCommand(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
                                   uint8_t green, uint8_t blue) {
     return GetSystem()->SetManualLight(on, brightnessPercent, cctMireds, rgbMode, red, green, blue);
 }
 
-int WebServer::HandleFanCommand(bool on, uint8_t speedPercent) {
+int ThreadRest::HandleFanCommand(bool on, uint8_t speedPercent) {
     return GetSystem()->SetManualFan(on, speedPercent);
 }
 
-int WebServer::HandleModeCommand(ControlMode mode, uint32_t overrideDurationMinutes) {
+int ThreadRest::HandleModeCommand(ControlMode mode, uint32_t overrideDurationMinutes) {
     if (mode == ControlMode::Override && (overrideDurationMinutes < 1U || overrideDurationMinutes > 1440U)) {
         return -EINVAL;
     }
     return GetSystem()->SetMode(mode, overrideDurationMinutes * 60000U);
 }
 
-int WebServer::HandleProfileUpdate(const AppConfig& config) {
+int ThreadRest::HandleProfileUpdate(const AppConfig& config) {
     return GetSystem()->UpdateConfig(config);
 }
 
-int WebServer::HandleFactoryReset() {
+int ThreadRest::HandleFactoryReset() {
     return GetSystem()->FactoryReset();
 }
 
-int WebServer::BuildStatusJson(char* buffer, size_t bufferSize) const {
+int ThreadRest::BuildStatusJson(char* buffer, size_t bufferSize) const {
     if (buffer == nullptr || bufferSize == 0U) {
         return -EINVAL;
     }
@@ -448,7 +426,7 @@ int WebServer::BuildStatusJson(char* buffer, size_t bufferSize) const {
     return (written < 0 || static_cast<size_t>(written) >= bufferSize) ? -ENOMEM : 0;
 }
 
-int WebServer::BuildProfileJson(char* buffer, size_t bufferSize) const {
+int ThreadRest::BuildProfileJson(char* buffer, size_t bufferSize) const {
     if (buffer == nullptr || bufferSize == 0U) {
         return -EINVAL;
     }
@@ -464,7 +442,7 @@ int WebServer::BuildProfileJson(char* buffer, size_t bufferSize) const {
     return (written < 0 || static_cast<size_t>(written) >= bufferSize) ? -ENOMEM : 0;
 }
 
-int WebServer::BuildDiagnosticsJson(char* buffer, size_t bufferSize) const {
+int ThreadRest::BuildDiagnosticsJson(char* buffer, size_t bufferSize) const {
     if (buffer == nullptr || bufferSize == 0U) {
         return -EINVAL;
     }
