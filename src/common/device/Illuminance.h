@@ -27,6 +27,7 @@ class IlluminanceDevice final : public Device {
 
     float mCurrentLux = 0.0f;
     float mPreviousLux = -1000.0f;
+    int64_t mLastPublishMs = -1;
     bool mValid = false;
     bool mPreviousValid = false;
 };

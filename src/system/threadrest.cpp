@@ -56,14 +56,14 @@ struct ResetRequest {
 };
 
 struct ProfileRequest {
-    float lightWeight;
-    float soundWeight;
-    uint8_t minBrightness;
-    uint8_t maxBrightness;
-    uint16_t minCCTMireds;
-    uint16_t maxCCTMireds;
-    uint8_t fanMaxPercent;
-    uint32_t occupancyTimeoutMs;
+    json_obj_token lightWeight;
+    json_obj_token soundWeight;
+    int32_t minBrightness;
+    int32_t maxBrightness;
+    int32_t minCCTMireds;
+    int32_t maxCCTMireds;
+    int32_t fanMaxPercent;
+    int32_t occupancyTimeoutMs;
     bool profileConfigured;
 };
 
@@ -75,6 +75,20 @@ struct StaticAsset {
 extern const StaticAsset kAppHtml;
 extern const StaticAsset kAppJavaScript;
 extern const StaticAsset kAppStylesheet;
+extern const StaticAsset kAppFavicon;
+extern const StaticAsset kAppSensoryShieldLogo;
+extern const StaticAsset kAppSensoryShieldMark;
+extern const StaticAsset kAppAdultAvatar;
+extern const StaticAsset kAppChildAtHome;
+extern const StaticAsset kAppChildAvatar;
+extern const StaticAsset kAppComfortableHome;
+extern const StaticAsset kAppEnvironmentStatus;
+extern const StaticAsset kAppFanControl;
+extern const StaticAsset kAppLightControl;
+extern const StaticAsset kAppModeControl;
+extern const StaticAsset kAppQuietSound;
+extern const StaticAsset kAppSensoryStatus;
+extern const StaticAsset kAppSoftLight;
 
 static const struct json_obj_descr kLightFields[] = {
     JSON_OBJ_DESCR_PRIM(LightRequest, power, JSON_TOK_TRUE),
@@ -97,8 +111,8 @@ static const struct json_obj_descr kResetFields[] = {
     JSON_OBJ_DESCR_PRIM(ResetRequest, confirm, JSON_TOK_TRUE),
 };
 static const struct json_obj_descr kProfileFields[] = {
-    JSON_OBJ_DESCR_PRIM(ProfileRequest, lightWeight, JSON_TOK_NUMBER),
-    JSON_OBJ_DESCR_PRIM(ProfileRequest, soundWeight, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(ProfileRequest, lightWeight, JSON_TOK_FLOAT),
+    JSON_OBJ_DESCR_PRIM(ProfileRequest, soundWeight, JSON_TOK_FLOAT),
     JSON_OBJ_DESCR_PRIM(ProfileRequest, minBrightness, JSON_TOK_NUMBER),
     JSON_OBJ_DESCR_PRIM(ProfileRequest, maxBrightness, JSON_TOK_NUMBER),
     JSON_OBJ_DESCR_PRIM(ProfileRequest, minCCTMireds, JSON_TOK_NUMBER),
@@ -122,64 +136,152 @@ ApiContext kModeContext{ApiRoute::Mode};
 ApiContext kProfileContext{ApiRoute::Profile};
 ApiContext kDiagnosticsContext{ApiRoute::Diagnostics};
 ApiContext kResetContext{ApiRoute::FactoryReset};
-const StaticAsset* kIndexAsset = &kAppHtml;
-const StaticAsset* kJavaScriptAsset = &kAppJavaScript;
-const StaticAsset* kStylesheetAsset = &kAppStylesheet;
 constexpr int kLightRequiredFields = BIT(0) | BIT(1) | BIT(2);
+constexpr int kProfileRequiredFields = BIT_MASK(ARRAY_SIZE(kProfileFields));
 
 uint16_t servicePort = THREAD_REST_PORT;
-HTTP_SERVICE_DEFINE(sensoryshield_thread_rest, nullptr, &servicePort, 2, 2, nullptr, nullptr, nullptr);
+HTTP_SERVICE_DEFINE(sensoryshield_thread_rest, nullptr, &servicePort, 8, 8, nullptr, nullptr, nullptr);
 
-const struct http_header kStaticAssetHeaders[] = {
-    {.name = "Cache-Control", .value = "no-cache"},
-};
-
-int HandleStaticAsset(struct http_client_ctx* client, enum http_transaction_status status,
-                      const struct http_request_ctx* request, struct http_response_ctx* response,
-                      void* userData) {
-    ARG_UNUSED(request);
-    if (status == HTTP_SERVER_TRANSACTION_ABORTED || status == HTTP_SERVER_TRANSACTION_COMPLETE) {
-        return 0;
-    }
-    if (status != HTTP_SERVER_REQUEST_DATA_FINAL) {
-        return 0;
-    }
-    if (client->method != HTTP_GET && client->method != HTTP_OPTIONS) {
-        response->status = HTTP_405_METHOD_NOT_ALLOWED;
-        response->final_chunk = true;
-        return 0;
-    }
-    if (client->method == HTTP_OPTIONS) {
-        response->status = HTTP_204_NO_CONTENT;
-        response->final_chunk = true;
-        return 0;
+int FormatFixed(char* buffer, size_t bufferSize, float value, uint32_t scale, unsigned int digits) {
+    if (buffer == nullptr || bufferSize == 0U || scale == 0U) {
+        return -EINVAL;
     }
 
-    const auto* asset = static_cast<const StaticAsset*>(userData);
-    response->status = HTTP_200_OK;
-    response->headers = kStaticAssetHeaders;
-    response->header_count = ARRAY_SIZE(kStaticAssetHeaders);
-    response->body = asset->data;
-    response->body_len = asset->length;
-    response->final_chunk = true;
+    const bool negative = value < 0.0f;
+    const float absoluteValue = negative ? -value : value;
+    const uint32_t scaled = static_cast<uint32_t>((absoluteValue * static_cast<float>(scale)) + 0.5f);
+    const uint32_t whole = scaled / scale;
+    const uint32_t fraction = scaled % scale;
+
+    int written = 0;
+    if (negative && scaled > 0U) {
+        written = snprintf(buffer, bufferSize, "-%u.%0*u", whole, static_cast<int>(digits), fraction);
+    } else {
+        written = snprintf(buffer, bufferSize, "%u.%0*u", whole, static_cast<int>(digits), fraction);
+    }
+    return (written < 0 || static_cast<size_t>(written) >= bufferSize) ? -ENOMEM : 0;
+}
+
+bool IsValidProfileRequest(const ProfileRequest& payload) {
+    return payload.minBrightness >= 0 && payload.minBrightness <= 100 &&
+           payload.maxBrightness >= payload.minBrightness && payload.maxBrightness <= 100 &&
+           payload.minCCTMireds >= 1 && payload.minCCTMireds <= 1000 &&
+           payload.maxCCTMireds >= payload.minCCTMireds && payload.maxCCTMireds <= 1000 &&
+           payload.fanMaxPercent >= 0 && payload.fanMaxPercent <= 100 && payload.occupancyTimeoutMs >= 1000;
+}
+
+int ParseFixedToken(const json_obj_token& token, float* value) {
+    if (token.start == nullptr || token.length == 0U || value == nullptr) {
+        return -EINVAL;
+    }
+
+    size_t index = 0U;
+    bool negative = false;
+    if (token.start[index] == '-') {
+        negative = true;
+        ++index;
+    }
+
+    uint32_t whole = 0U;
+    uint32_t fraction = 0U;
+    uint32_t divisor = 1U;
+    bool sawDigit = false;
+
+    while (index < token.length && token.start[index] >= '0' && token.start[index] <= '9') {
+        whole = (whole * 10U) + static_cast<uint32_t>(token.start[index] - '0');
+        sawDigit = true;
+        ++index;
+    }
+
+    if (index < token.length && token.start[index] == '.') {
+        ++index;
+        while (index < token.length && token.start[index] >= '0' && token.start[index] <= '9') {
+            if (divisor < 1000000U) {
+                fraction = (fraction * 10U) + static_cast<uint32_t>(token.start[index] - '0');
+                divisor *= 10U;
+            }
+            sawDigit = true;
+            ++index;
+        }
+    }
+
+    if (!sawDigit || index != token.length) {
+        return -EINVAL;
+    }
+
+    float parsed = static_cast<float>(whole) + (static_cast<float>(fraction) / static_cast<float>(divisor));
+    *value = negative ? -parsed : parsed;
     return 0;
 }
 
-#define STATIC_RESOURCE_DETAIL(name, contentType, asset) \
-    static struct http_resource_detail_dynamic name = { \
-        .common = {.bitmask_of_supported_http_methods = BIT(HTTP_GET) | BIT(HTTP_OPTIONS), \
-                   .type = HTTP_RESOURCE_TYPE_DYNAMIC, .content_type = contentType}, \
-        .cb = HandleStaticAsset, .holder = nullptr, .user_data = const_cast<StaticAsset*>(asset)}
+#define GZIP_STATIC_RESOURCE_DETAIL(name, contentType, asset) \
+    static struct http_resource_detail_static name = { \
+        .common = {.bitmask_of_supported_http_methods = BIT(HTTP_GET), \
+                   .type = HTTP_RESOURCE_TYPE_STATIC, \
+                   .content_encoding = "gzip", \
+                   .content_type = contentType}, \
+        .static_data = (asset).data, \
+        .static_data_len = (asset).length}
 
-STATIC_RESOURCE_DETAIL(indexDetail, "text/html; charset=utf-8", kIndexAsset);
-STATIC_RESOURCE_DETAIL(javaScriptDetail, "application/javascript; charset=utf-8", kJavaScriptAsset);
-STATIC_RESOURCE_DETAIL(stylesheetDetail, "text/css; charset=utf-8", kStylesheetAsset);
+#define PLAIN_STATIC_RESOURCE_DETAIL(name, contentType, asset) \
+    static struct http_resource_detail_static name = { \
+        .common = {.bitmask_of_supported_http_methods = BIT(HTTP_GET), \
+                   .type = HTTP_RESOURCE_TYPE_STATIC, \
+                   .content_type = contentType}, \
+        .static_data = (asset).data, \
+        .static_data_len = (asset).length}
+
+GZIP_STATIC_RESOURCE_DETAIL(indexDetail, "text/html; charset=utf-8", kAppHtml);
+GZIP_STATIC_RESOURCE_DETAIL(javaScriptDetail, "application/javascript; charset=utf-8", kAppJavaScript);
+GZIP_STATIC_RESOURCE_DETAIL(stylesheetDetail, "text/css; charset=utf-8", kAppStylesheet);
+PLAIN_STATIC_RESOURCE_DETAIL(faviconDetail, "image/png", kAppFavicon);
+PLAIN_STATIC_RESOURCE_DETAIL(sensoryShieldLogoDetail, "image/png", kAppSensoryShieldLogo);
+PLAIN_STATIC_RESOURCE_DETAIL(sensoryShieldMarkDetail, "image/png", kAppSensoryShieldMark);
+PLAIN_STATIC_RESOURCE_DETAIL(adultAvatarDetail, "image/png", kAppAdultAvatar);
+PLAIN_STATIC_RESOURCE_DETAIL(childAtHomeDetail, "image/png", kAppChildAtHome);
+PLAIN_STATIC_RESOURCE_DETAIL(childAvatarDetail, "image/png", kAppChildAvatar);
+PLAIN_STATIC_RESOURCE_DETAIL(comfortableHomeDetail, "image/png", kAppComfortableHome);
+PLAIN_STATIC_RESOURCE_DETAIL(environmentStatusDetail, "image/png", kAppEnvironmentStatus);
+PLAIN_STATIC_RESOURCE_DETAIL(fanControlDetail, "image/png", kAppFanControl);
+PLAIN_STATIC_RESOURCE_DETAIL(lightControlDetail, "image/png", kAppLightControl);
+PLAIN_STATIC_RESOURCE_DETAIL(modeControlDetail, "image/png", kAppModeControl);
+PLAIN_STATIC_RESOURCE_DETAIL(quietSoundDetail, "image/png", kAppQuietSound);
+PLAIN_STATIC_RESOURCE_DETAIL(sensoryStatusDetail, "image/png", kAppSensoryStatus);
+PLAIN_STATIC_RESOURCE_DETAIL(softLightDetail, "image/png", kAppSoftLight);
 
 HTTP_RESOURCE_DEFINE(indexResource, sensoryshield_thread_rest, "/", &indexDetail);
 HTTP_RESOURCE_DEFINE(javaScriptResource, sensoryshield_thread_rest, "/assets/app.js", &javaScriptDetail);
 HTTP_RESOURCE_DEFINE(stylesheetResource, sensoryshield_thread_rest, "/assets/index.css", &stylesheetDetail);
+HTTP_RESOURCE_DEFINE(faviconResource, sensoryshield_thread_rest, "/favicon.png", &faviconDetail);
+HTTP_RESOURCE_DEFINE(sensoryShieldLogoResource, sensoryshield_thread_rest, "/brand/sensoryshield-logo.png",
+                     &sensoryShieldLogoDetail);
+HTTP_RESOURCE_DEFINE(sensoryShieldMarkResource, sensoryshield_thread_rest, "/brand/sensoryshield-mark.png",
+                     &sensoryShieldMarkDetail);
+HTTP_RESOURCE_DEFINE(adultAvatarResource, sensoryshield_thread_rest, "/illustrations/adult-avatar.png",
+                     &adultAvatarDetail);
+HTTP_RESOURCE_DEFINE(childAtHomeResource, sensoryshield_thread_rest, "/illustrations/child-at-home.png",
+                     &childAtHomeDetail);
+HTTP_RESOURCE_DEFINE(childAvatarResource, sensoryshield_thread_rest, "/illustrations/child-avatar.png",
+                     &childAvatarDetail);
+HTTP_RESOURCE_DEFINE(comfortableHomeResource, sensoryshield_thread_rest, "/illustrations/comfortable-home.png",
+                     &comfortableHomeDetail);
+HTTP_RESOURCE_DEFINE(environmentStatusResource, sensoryshield_thread_rest, "/illustrations/environment-status.png",
+                     &environmentStatusDetail);
+HTTP_RESOURCE_DEFINE(fanControlResource, sensoryshield_thread_rest, "/illustrations/fan-control.png",
+                     &fanControlDetail);
+HTTP_RESOURCE_DEFINE(lightControlResource, sensoryshield_thread_rest, "/illustrations/light-control.png",
+                     &lightControlDetail);
+HTTP_RESOURCE_DEFINE(modeControlResource, sensoryshield_thread_rest, "/illustrations/mode-control.png",
+                     &modeControlDetail);
+HTTP_RESOURCE_DEFINE(quietSoundResource, sensoryshield_thread_rest, "/illustrations/quiet-sound.png",
+                     &quietSoundDetail);
+HTTP_RESOURCE_DEFINE(sensoryStatusResource, sensoryshield_thread_rest, "/illustrations/sensory-status.png",
+                     &sensoryStatusDetail);
+HTTP_RESOURCE_DEFINE(softLightResource, sensoryshield_thread_rest, "/illustrations/soft-light.png",
+                     &softLightDetail);
 
-#undef STATIC_RESOURCE_DETAIL
+#undef GZIP_STATIC_RESOURCE_DETAIL
+#undef PLAIN_STATIC_RESOURCE_DETAIL
 
 int HandleApi(struct http_client_ctx* client, enum http_transaction_status status,
               const struct http_request_ctx* request, struct http_response_ctx* response, void* userData) {
@@ -232,20 +334,29 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
             if (isPost) {
                 context->request[context->requestLength] = '\0';
                 ProfileRequest payload{};
+                float lightWeight = 0.0f;
+                float soundWeight = 0.0f;
                 const int parsed = json_obj_parse(context->request, context->requestLength, kProfileFields,
                                                   ARRAY_SIZE(kProfileFields), &payload);
-                if (parsed != BIT_MASK(ARRAY_SIZE(kProfileFields))) {
+                if (parsed != kProfileRequiredFields || !IsValidProfileRequest(payload)) {
                     ret = -EINVAL;
                 } else {
+                    ret = ParseFixedToken(payload.lightWeight, &lightWeight);
+                    if (ret == 0) {
+                        ret = ParseFixedToken(payload.soundWeight, &soundWeight);
+                    }
+                }
+
+                if (ret == 0) {
                     const AppConfig config = {CONFIG_VERSION,
-                                              payload.lightWeight,
-                                              payload.soundWeight,
-                                              payload.minBrightness,
-                                              payload.maxBrightness,
-                                              payload.minCCTMireds,
-                                              payload.maxCCTMireds,
-                                              payload.fanMaxPercent,
-                                              payload.occupancyTimeoutMs,
+                                              lightWeight,
+                                              soundWeight,
+                                              static_cast<uint8_t>(payload.minBrightness),
+                                              static_cast<uint8_t>(payload.maxBrightness),
+                                              static_cast<uint16_t>(payload.minCCTMireds),
+                                              static_cast<uint16_t>(payload.maxCCTMireds),
+                                              static_cast<uint8_t>(payload.fanMaxPercent),
+                                              static_cast<uint32_t>(payload.occupancyTimeoutMs),
                                               payload.profileConfigured};
                     ret = GetThreadRest()->HandleProfileUpdate(config);
                 }
@@ -403,10 +514,24 @@ int ThreadRest::BuildStatusJson(char* buffer, size_t bufferSize) const {
     const LightState light = GetLightDevice()->CurrentState();
     const FanState fan = GetFanDevice()->CurrentState();
     const unsigned int mode = static_cast<unsigned int>(GetSystem()->Mode());
+    char lux[16];
+    char soundEnergy[16];
+    char sensoryScore[16];
+
+    int ret = FormatFixed(lux, sizeof(lux), snapshot.lux, 10U, 1U);
+    if (ret == 0) {
+        ret = FormatFixed(soundEnergy, sizeof(soundEnergy), snapshot.sound.energy, 1000U, 3U);
+    }
+    if (ret == 0) {
+        ret = FormatFixed(sensoryScore, sizeof(sensoryScore), target.sensoryScore, 1000U, 3U);
+    }
+    if (ret != 0) {
+        return ret;
+    }
 
     const int written = snprintf(
         buffer, bufferSize,
-        "{\"sensor\":{\"lux\":%.1f,\"occupied\":%s,\"soundEnergy\":%.3f,\"sensoryScore\":%.3f,"
+        "{\"sensor\":{\"lux\":%s,\"occupied\":%s,\"soundEnergy\":%s,\"sensoryScore\":%s,"
         "\"illuminanceValid\":%s,\"micValid\":%s,\"pirValid\":%s},"
         "\"outputs\":{\"lightOn\":%s,\"brightnessPercent\":%u,\"cctMireds\":%u,"
         "\"rgbMode\":%s,\"red\":%u,\"green\":%u,\"blue\":%u,"
@@ -414,11 +539,9 @@ int ThreadRest::BuildStatusJson(char* buffer, size_t bufferSize) const {
         "\"system\":{\"ready\":%s,\"mode\":%u,\"overrideRemainingSeconds\":%u,\"uptimeSeconds\":%u,\"firmware\":\"%s\","
         "\"matter\":{\"commissioned\":%s,\"fabricCount\":%u,\"threadAttached\":%s},"
         "\"storage\":{\"appConfig\":true,\"deviceTable\":true}}}",
-        static_cast<double>(snapshot.lux), snapshot.occupied ? "true" : "false",
-        static_cast<double>(snapshot.sound.energy), static_cast<double>(target.sensoryScore),
-        snapshot.illuminanceValid ? "true" : "false", snapshot.micValid ? "true" : "false",
-        snapshot.pirValid ? "true" : "false", light.on ? "true" : "false", light.brightnessPercent,
-        light.cctMireds, light.rgbMode ? "true" : "false", light.red, light.green, light.blue,
+        lux, snapshot.occupied ? "true" : "false", soundEnergy, sensoryScore, snapshot.illuminanceValid ? "true" : "false",
+        snapshot.micValid ? "true" : "false", snapshot.pirValid ? "true" : "false", light.on ? "true" : "false",
+        light.brightnessPercent, light.cctMireds, light.rgbMode ? "true" : "false", light.red, light.green, light.blue,
         fan.on ? "true" : "false", fan.speedPercent, GetSystem()->Ready() ? "true" : "false", mode,
         GetSystem()->OverrideRemainingSeconds(),
         k_uptime_get_32() / 1000U, APP_NAME, GetMatterBridge()->Commissioned() ? "true" : "false",
@@ -431,13 +554,23 @@ int ThreadRest::BuildProfileJson(char* buffer, size_t bufferSize) const {
         return -EINVAL;
     }
     const AppConfig config = GetMemory()->Config();
+    char lightWeight[16];
+    char soundWeight[16];
+
+    int ret = FormatFixed(lightWeight, sizeof(lightWeight), config.lightWeight, 1000U, 3U);
+    if (ret == 0) {
+        ret = FormatFixed(soundWeight, sizeof(soundWeight), config.soundWeight, 1000U, 3U);
+    }
+    if (ret != 0) {
+        return ret;
+    }
+
     const int written = snprintf(buffer, bufferSize,
-                                 "{\"lightWeight\":%.3f,\"soundWeight\":%.3f,\"minBrightness\":%u,"
+                                 "{\"lightWeight\":%s,\"soundWeight\":%s,\"minBrightness\":%u,"
                                  "\"maxBrightness\":%u,\"minCCTMireds\":%u,\"maxCCTMireds\":%u,"
                                  "\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u,\"profileConfigured\":%s}",
-                                 static_cast<double>(config.lightWeight), static_cast<double>(config.soundWeight),
-                                 config.minBrightness, config.maxBrightness, config.minCCTMireds,
-                                 config.maxCCTMireds, config.fanMaxPercent, config.occupancyTimeoutMs,
+                                 lightWeight, soundWeight, config.minBrightness, config.maxBrightness,
+                                 config.minCCTMireds, config.maxCCTMireds, config.fanMaxPercent, config.occupancyTimeoutMs,
                                  config.profileConfigured ? "true" : "false");
     return (written < 0 || static_cast<size_t>(written) >= bufferSize) ? -ENOMEM : 0;
 }
@@ -449,20 +582,31 @@ int ThreadRest::BuildDiagnosticsJson(char* buffer, size_t bufferSize) const {
 
     const SensorSnapshot snapshot = GetSystem()->Snapshot();
     const AppConfig config = GetMemory()->Config();
+    char lightWeight[16];
+    char soundWeight[16];
+
+    int ret = FormatFixed(lightWeight, sizeof(lightWeight), config.lightWeight, 1000U, 3U);
+    if (ret == 0) {
+        ret = FormatFixed(soundWeight, sizeof(soundWeight), config.soundWeight, 1000U, 3U);
+    }
+    if (ret != 0) {
+        return ret;
+    }
+
     const int written =
         snprintf(buffer, bufferSize,
                  "{\"firmware\":\"%s\",\"uptimeSeconds\":%u,\"storage\":{\"appConfig\":true,"
                  "\"deviceTable\":true},\"sensors\":{\"illuminance\":%s,\"mic\":%s,\"pir\":%s},"
                  "\"matter\":{\"commissioned\":%s,\"fabricCount\":%u,\"threadAttached\":%s},"
-                 "\"profile\":{\"lightWeight\":%.3f,\"soundWeight\":%.3f,\"minBrightness\":%u,"
+                 "\"profile\":{\"lightWeight\":%s,\"soundWeight\":%s,\"minBrightness\":%u,"
                  "\"maxBrightness\":%u,\"minCCTMireds\":%u,\"maxCCTMireds\":%u,"
                  "\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u,\"profileConfigured\":%s}}",
                  APP_NAME, k_uptime_get_32() / 1000U, snapshot.illuminanceValid ? "true" : "false",
                  snapshot.micValid ? "true" : "false", snapshot.pirValid ? "true" : "false",
                  GetMatterBridge()->Commissioned() ? "true" : "false", GetMatterBridge()->FabricCount(),
-                 GetMatterBridge()->ThreadAttached() ? "true" : "false", static_cast<double>(config.lightWeight),
-                 static_cast<double>(config.soundWeight), config.minBrightness, config.maxBrightness,
-                 config.minCCTMireds, config.maxCCTMireds, config.fanMaxPercent, config.occupancyTimeoutMs,
+                 GetMatterBridge()->ThreadAttached() ? "true" : "false", lightWeight, soundWeight,
+                 config.minBrightness, config.maxBrightness, config.minCCTMireds, config.maxCCTMireds,
+                 config.fanMaxPercent, config.occupancyTimeoutMs,
                  config.profileConfigured ? "true" : "false");
 
     return (written < 0 || static_cast<size_t>(written) >= bufferSize) ? -ENOMEM : 0;

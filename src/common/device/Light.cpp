@@ -93,7 +93,15 @@ int LightDevice::ApplyTarget(bool on, uint8_t brightnessPercent, uint16_t cctMir
 int LightDevice::ApplyTarget(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
                              uint8_t green, uint8_t blue) {
     const AppConfig config = GetMemory()->Config();
-    LightState next = {on, static_cast<uint8_t>(on ? ClampValue<uint8_t>(brightnessPercent, 0, 100) : 0),
+    uint8_t targetBrightness = on ? ClampValue<uint8_t>(brightnessPercent, 0, 100) : 0;
+    if (on && targetBrightness == 0U) {
+        targetBrightness = mLastOnBrightnessPercent > 0U ? mLastOnBrightnessPercent : config.minBrightness;
+    }
+    if (on && targetBrightness == 0U) {
+        targetBrightness = 1U;
+    }
+
+    LightState next = {on, targetBrightness,
                        ClampValue<uint16_t>(cctMireds, config.minCCTMireds, config.maxCCTMireds), rgbMode, red, green,
                        blue};
 

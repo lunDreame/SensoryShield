@@ -24,9 +24,6 @@ LOG_MODULE_REGISTER(system, LOG_LEVEL_INF);
 
 namespace {
 constexpr size_t kMatterDispatchStackSize = 4096;
-constexpr uint8_t kStatusBrightnessPercent = 25;
-constexpr uint8_t kStatusBrightnessStep = 2;
-constexpr uint32_t kStatusBlinkMs = 40;
 #if DT_NODE_HAS_STATUS(DT_ALIAS(sw0), okay)
 const struct gpio_dt_spec factoryResetButton = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
 #endif
@@ -35,10 +32,10 @@ struct k_thread matterDispatchThread;
 } // namespace
 
 System::System() {
+    k_mutex_init(&mLock);
     k_work_init_delayable(&mSensorWork, SensorWorkHandler);
     k_work_init_delayable(&mAlgorithmWork, AlgorithmWorkHandler);
     k_work_init_delayable(&mActuatorRampWork, ActuatorRampWorkHandler);
-    k_work_init_delayable(&mStatusLedWork, StatusLedWorkHandler);
     k_work_init(&mFactoryResetButtonWork, FactoryResetButtonWorkHandler);
 }
 
@@ -49,7 +46,6 @@ System& System::Instance() {
 
 int System::Initialize() {
     LOG_INF("System init");
-    bool bootError = false;
 
     int ret = GetMemory()->Initialize();
     if (ret != 0) {
@@ -59,33 +55,37 @@ int System::Initialize() {
 
     const AppConfig config = GetMemory()->Config();
     LOG_INF("Config loaded for runtime");
+    k_mutex_lock(&mLock, K_FOREVER);
     mManualTarget = {false, config.minBrightness, config.maxCCTMireds, false, 255, 255, 255, false, 0, 0.0f};
+    k_mutex_unlock(&mLock);
 
     LOG_INF("Initializing peripherals");
     ret = InitializePeripherals();
     if (ret != 0) {
         mMode = ControlMode::Safe;
-        bootError = true;
         LOG_WRN("Peripheral init incomplete: %d", ret);
     }
 
     ret = GetAlgorithm()->Initialize(GetMemory()->Config());
     if (ret != 0) {
         SetSafeState();
-        ShowErrorStatus();
         return ret;
     }
 
     ret = InitializeMatter();
     if (ret != 0) {
-        bootError = true;
         LOG_WRN("Matter init deferred: %d", ret);
     }
 
     ret = RestoreChildDevices();
     if (ret != 0) {
         SetSafeState();
-        ShowErrorStatus();
+        return ret;
+    }
+
+    ret = StartMatterServer();
+    if (ret != 0) {
+        SetSafeState();
         return ret;
     }
 
@@ -97,20 +97,12 @@ int System::Initialize() {
     ret = InitializeWorks();
     if (ret != 0) {
         SetSafeState();
-        ShowErrorStatus();
         return ret;
     }
 
+    k_mutex_lock(&mLock, K_FOREVER);
     mReady = true;
-    if (bootError) {
-        ShowErrorStatus();
-    } else if (!GetMatterBridge()->Commissioned()) {
-        if (GetMatterBridge()->CommissioningActive()) {
-            ShowCommissioningStatus();
-        } else {
-            ShowBootOkStatus();
-        }
-    }
+    k_mutex_unlock(&mLock);
     LOG_INF("System ready");
     return 0;
 }
@@ -197,15 +189,6 @@ int System::InitializeMatter() {
         return ret;
     }
 
-    ret = InitializeAggregator();
-    if (ret == -ENOTSUP) {
-        LOG_WRN("Matter server is active, aggregator and remaining endpoints are not in the data model yet");
-        return 0;
-    }
-    if (ret != 0) {
-        return ret;
-    }
-
     return 0;
 }
 
@@ -265,22 +248,44 @@ int System::RestoreChildDevices() {
         if (ret != 0) {
             return ret;
         }
+    }
+
+    return 0;
+}
+
+int System::RegisterMatterEndpoints() {
+    int ret = InitializeAggregator();
+    if (ret != 0) {
+        return ret;
+    }
+
+    Device* devices[] = {
+        GetLightDevice(),
+        GetFanDevice(),
+        GetOccupancyDevice(),
+        GetIlluminanceDevice(),
+    };
+
+    for (size_t index = 0; index < ARRAY_SIZE(devices); ++index) {
         if (!mMatterChildEnabled[index]) {
             continue;
         }
-        ret = device->CreateEndpoint();
-        if (ret != 0 && ret != -ENOTSUP && ret != -EAGAIN) {
-            return ret;
-        }
-        if (ret == -ENOTSUP || ret == -EAGAIN) {
-            continue;
-        }
-        ret = device->UpdateToMatter(true);
-        if (ret != 0 && ret != -ENOTSUP && ret != -EAGAIN) {
+        ret = devices[index]->CreateEndpoint();
+        if (ret != 0) {
             return ret;
         }
     }
 
+    return 0;
+}
+
+int System::StartMatterServer() {
+    int ret = GetMatterBridge()->StartServer();
+    if (ret != 0) {
+        return ret;
+    }
+
+    SyncMatterDirtyDevices(true);
     return 0;
 }
 
@@ -299,7 +304,7 @@ int System::StartMatterDispatch() {
     if (mMatterDispatchStarted) {
         return 0;
     }
-    if (!GetMatterBridge()->Ready()) {
+    if (!GetMatterBridge()->Started()) {
         return 0;
     }
 
@@ -311,6 +316,7 @@ int System::StartMatterDispatch() {
 }
 
 int System::SetMode(ControlMode mode, uint32_t overrideDurationMs) {
+    k_mutex_lock(&mLock, K_FOREVER);
     if (mode == ControlMode::Override) {
         mOverrideDeadlineMs = k_uptime_get() + overrideDurationMs;
     } else {
@@ -318,15 +324,22 @@ int System::SetMode(ControlMode mode, uint32_t overrideDurationMs) {
     }
     const ControlMode previous = mMode;
     mMode = mode;
-    OnModeChanged(previous, mMode);
+    const ControlMode current = mMode;
+    k_mutex_unlock(&mLock);
+    OnModeChanged(previous, current);
     return 0;
 }
 
 uint32_t System::OverrideRemainingSeconds() const {
-    if (mMode != ControlMode::Override || mOverrideDeadlineMs <= 0) {
+    k_mutex_lock(&mLock, K_FOREVER);
+    const ControlMode mode = mMode;
+    const int64_t deadlineMs = mOverrideDeadlineMs;
+    k_mutex_unlock(&mLock);
+
+    if (mode != ControlMode::Override || deadlineMs <= 0) {
         return 0;
     }
-    const int64_t remainingMs = mOverrideDeadlineMs - k_uptime_get();
+    const int64_t remainingMs = deadlineMs - k_uptime_get();
     return remainingMs > 0 ? static_cast<uint32_t>((remainingMs + 999) / 1000) : 0;
 }
 
@@ -336,8 +349,12 @@ int System::SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMired
 
 int System::SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
                            uint8_t green, uint8_t blue) {
+    k_mutex_lock(&mLock, K_FOREVER);
     ControlTarget next = mManualTarget;
-    if (mMode != ControlMode::Manual && mMode != ControlMode::Override) {
+    const ControlMode mode = mMode;
+    k_mutex_unlock(&mLock);
+
+    if (mode != ControlMode::Manual && mode != ControlMode::Override) {
         const FanState fan = GetFanDevice()->CurrentState();
         next.fanOn = fan.on;
         next.fanPercent = fan.speedPercent;
@@ -350,26 +367,26 @@ int System::SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMired
     next.green = green;
     next.blue = blue;
     const int ret = GetLightDevice()->ApplyTarget(next.lightOn, next.brightnessPercent, next.cctMireds, next.rgbMode,
-                                                 next.red, next.green, next.blue);
+                                                  next.red, next.green, next.blue);
     if (ret != 0) {
         return ret;
     }
+    SyncAppliedTargetFromDevices(next);
+    k_mutex_lock(&mLock, K_FOREVER);
     mManualTarget = next;
     mTarget = next;
-    const LightState light = GetLightDevice()->CurrentState();
-    mAppliedTarget.lightOn = light.on;
-    mAppliedTarget.brightnessPercent = light.brightnessPercent;
-    mAppliedTarget.cctMireds = light.cctMireds;
-    mAppliedTarget.rgbMode = light.rgbMode;
-    mAppliedTarget.red = light.red;
-    mAppliedTarget.green = light.green;
-    mAppliedTarget.blue = light.blue;
+    mAppliedTarget = next;
+    k_mutex_unlock(&mLock);
     return SetMode(ControlMode::Manual);
 }
 
 int System::SetManualFan(bool on, uint8_t speedPercent) {
+    k_mutex_lock(&mLock, K_FOREVER);
     ControlTarget next = mManualTarget;
-    if (mMode != ControlMode::Manual && mMode != ControlMode::Override) {
+    const ControlMode mode = mMode;
+    k_mutex_unlock(&mLock);
+
+    if (mode != ControlMode::Manual && mode != ControlMode::Override) {
         const LightState light = GetLightDevice()->CurrentState();
         next.lightOn = light.on;
         next.brightnessPercent = light.brightnessPercent;
@@ -385,10 +402,12 @@ int System::SetManualFan(bool on, uint8_t speedPercent) {
     if (ret != 0) {
         return ret;
     }
+    SyncAppliedTargetFromDevices(next);
+    k_mutex_lock(&mLock, K_FOREVER);
     mManualTarget = next;
     mTarget = next;
-    mAppliedTarget.fanOn = GetFanDevice()->CurrentState().on;
-    mAppliedTarget.fanPercent = GetFanDevice()->CurrentState().speedPercent;
+    mAppliedTarget = next;
+    k_mutex_unlock(&mLock);
     return SetMode(ControlMode::Manual);
 }
 
@@ -412,7 +431,9 @@ int System::FactoryReset() {
     }
 
     SetSafeState();
+    k_mutex_lock(&mLock, K_FOREVER);
     mReady = false;
+    k_mutex_unlock(&mLock);
     LOG_INF("Factory reset complete");
     return 0;
 }
@@ -459,11 +480,6 @@ void System::ActuatorRampWorkHandler(struct k_work* work) {
     system->ActuatorRampWork();
 }
 
-void System::StatusLedWorkHandler(struct k_work* work) {
-    System* system = CONTAINER_OF(k_work_delayable_from_work(work), System, mStatusLedWork);
-    system->StatusLedWork();
-}
-
 void System::MatterDispatchThread(void* first, void* second, void* third) {
     ARG_UNUSED(first);
     ARG_UNUSED(second);
@@ -478,10 +494,15 @@ void System::SensorWork() {
     const int luxRet = GetBH1750()->ReadLux(&lux);
     GetPIR()->Poll();
 
-    mSnapshot = {lux,         GetMic()->LatestFeatures(),       GetPIR()->IsOccupied(), GetPIR()->LastMotionMs(),
-                 luxRet == 0, GetMic()->LatestFeatures().valid, GetPIR()->Healthy()};
+    const SoundFeatures sound = GetMic()->LatestFeatures();
+    const SensorSnapshot snapshot = {lux,         sound,       GetPIR()->IsOccupied(), GetPIR()->LastMotionMs(),
+                                     luxRet == 0, sound.valid, GetPIR()->Healthy()};
 
-    GetIlluminanceDevice()->SetCurrentLux(mSnapshot.lux, mSnapshot.illuminanceValid);
+    k_mutex_lock(&mLock, K_FOREVER);
+    mSnapshot = snapshot;
+    k_mutex_unlock(&mLock);
+
+    GetIlluminanceDevice()->SetCurrentLux(snapshot.lux, snapshot.illuminanceValid);
     if (mMatterChildEnabled[2]) {
         GetOccupancyDevice()->UpdateToMatter();
     }
@@ -492,16 +513,44 @@ void System::SensorWork() {
 }
 
 void System::AlgorithmWork() {
-    if (mMode == ControlMode::Override && k_uptime_get() >= mOverrideDeadlineMs) {
-        SetMode(ControlMode::Auto);
+    k_mutex_lock(&mLock, K_FOREVER);
+    ControlMode mode = mMode;
+    ControlMode previousMode = mMode;
+    bool modeChanged = false;
+    if (mode == ControlMode::Override && k_uptime_get() >= mOverrideDeadlineMs) {
+        mMode = ControlMode::Auto;
+        mOverrideDeadlineMs = 0;
+        mode = mMode;
+        modeChanged = previousMode != mMode;
     }
-    if (mMode == ControlMode::Auto) {
-        mTarget = GetAlgorithm()->Evaluate(mSnapshot);
-    } else if (mMode == ControlMode::Manual || mMode == ControlMode::Override) {
-        mTarget = mManualTarget;
+    const SensorSnapshot snapshot = mSnapshot;
+    const ControlTarget manualTarget = mManualTarget;
+    ControlTarget safeTarget = mTarget;
+    k_mutex_unlock(&mLock);
+
+    if (modeChanged) {
+        OnModeChanged(previousMode, mode);
+    }
+
+    ControlTarget nextTarget = {};
+    if (mode == ControlMode::Auto) {
+        nextTarget = GetAlgorithm()->Evaluate(snapshot);
+    } else if (mode == ControlMode::Manual || mode == ControlMode::Override) {
+        nextTarget = manualTarget;
     } else {
-        mTarget = {false, 0, GetMemory()->Config().maxCCTMireds, false, 255, 255, 255, false, 0, 0.0f};
+        SyncAppliedTargetFromDevices(safeTarget);
+        nextTarget = safeTarget;
+        nextTarget.fanOn = false;
+        nextTarget.fanPercent = 0;
+        nextTarget.sensoryScore = 0.0f;
     }
+
+    k_mutex_lock(&mLock, K_FOREVER);
+    mTarget = nextTarget;
+    if (mode == ControlMode::Safe) {
+        mAppliedTarget = safeTarget;
+    }
+    k_mutex_unlock(&mLock);
 
     SyncMatterDirtyDevices(false);
     k_work_schedule(&mAlgorithmWork, K_MSEC(ALGORITHM_PERIOD_MS));
@@ -522,60 +571,33 @@ void System::ActuatorRampWork() {
         if (current > target) return static_cast<uint16_t>(current - (delta > 8U ? 8U : delta));
         return current;
     };
-    ControlTarget next = mAppliedTarget;
-    next.brightnessPercent = step(mAppliedTarget.brightnessPercent, mTarget.lightOn ? mTarget.brightnessPercent : 0U);
-    next.fanPercent = step(mAppliedTarget.fanPercent, mTarget.fanOn ? mTarget.fanPercent : 0U);
-    next.lightOn = mTarget.lightOn || (mAppliedTarget.lightOn && next.brightnessPercent > 0U);
-    next.fanOn = mTarget.fanOn || (mAppliedTarget.fanOn && next.fanPercent > 0U);
-    next.cctMireds = stepCct(mAppliedTarget.cctMireds, mTarget.cctMireds);
-    next.rgbMode = mTarget.rgbMode;
-    next.red = mTarget.red;
-    next.green = mTarget.green;
-    next.blue = mTarget.blue;
-    next.sensoryScore = mTarget.sensoryScore;
-    if (next != mAppliedTarget) {
-        mAppliedTarget = next;
+    k_mutex_lock(&mLock, K_FOREVER);
+    const ControlTarget target = mTarget;
+    const ControlTarget appliedTarget = mAppliedTarget;
+    k_mutex_unlock(&mLock);
+
+    ControlTarget next = appliedTarget;
+    next.brightnessPercent = step(appliedTarget.brightnessPercent, target.lightOn ? target.brightnessPercent : 0U);
+    next.fanPercent = step(appliedTarget.fanPercent, target.fanOn ? target.fanPercent : 0U);
+    next.lightOn = target.lightOn || (appliedTarget.lightOn && next.brightnessPercent > 0U);
+    next.fanOn = target.fanOn || (appliedTarget.fanOn && next.fanPercent > 0U);
+    next.cctMireds = stepCct(appliedTarget.cctMireds, target.cctMireds);
+    next.rgbMode = target.rgbMode;
+    next.red = target.red;
+    next.green = target.green;
+    next.blue = target.blue;
+    next.sensoryScore = target.sensoryScore;
+    if (next != appliedTarget) {
         const int ret = ApplyTarget(next);
         if (ret != 0) {
             LOG_ERR("Ramp apply failed: %d", ret);
+        } else {
+            k_mutex_lock(&mLock, K_FOREVER);
+            mAppliedTarget = next;
+            k_mutex_unlock(&mLock);
         }
     }
     k_work_schedule(&mActuatorRampWork, K_MSEC(ACTUATOR_RAMP_MS));
-}
-
-void System::StatusLedWork() {
-    if (!mStatusLedActive) {
-        return;
-    }
-
-    if (mStatusLedIncreasing) {
-        const uint8_t next = static_cast<uint8_t>(mStatusLedBrightness + kStatusBrightnessStep);
-        mStatusLedBrightness = next >= kStatusBrightnessPercent ? kStatusBrightnessPercent : next;
-        if (mStatusLedBrightness >= kStatusBrightnessPercent) {
-            mStatusLedIncreasing = false;
-        }
-    } else {
-        mStatusLedBrightness = mStatusLedBrightness > kStatusBrightnessStep
-                                   ? static_cast<uint8_t>(mStatusLedBrightness - kStatusBrightnessStep)
-                                   : 0;
-        if (mStatusLedBrightness == 0U) {
-            mStatusLedIncreasing = true;
-            if (mStatusLedPulsesRemaining > 0U) {
-                --mStatusLedPulsesRemaining;
-                if (mStatusLedPulsesRemaining == 0U) {
-                    mStatusLedActive = false;
-                    if (mStatusLedRestoreWhenDone) {
-                        RestoreControlLed();
-                    }
-                    return;
-                }
-            }
-        }
-    }
-
-    GetWS2812B()->SetRgbTarget(mStatusLedBrightness > 0U, mStatusLedBrightness, mStatusLedRed, mStatusLedGreen,
-                               mStatusLedBlue);
-    k_work_schedule(&mStatusLedWork, K_MSEC(kStatusBlinkMs));
 }
 
 void System::SyncMatterDirtyDevices(bool force) {
@@ -587,15 +609,27 @@ void System::SyncMatterDirtyDevices(bool force) {
     }
 }
 
+void System::SyncAppliedTargetFromDevices(ControlTarget& target) {
+    const LightState light = GetLightDevice()->CurrentState();
+    const FanState fan = GetFanDevice()->CurrentState();
+
+    target.lightOn = light.on;
+    target.brightnessPercent = light.brightnessPercent;
+    target.cctMireds = light.cctMireds;
+    target.rgbMode = light.rgbMode;
+    target.red = light.red;
+    target.green = light.green;
+    target.blue = light.blue;
+    target.fanOn = fan.on;
+    target.fanPercent = fan.speedPercent;
+}
+
 int System::ApplyTarget(const ControlTarget& target) {
-    int ret = 0;
-    if (!mStatusLedActive) {
-        ret = GetLightDevice()->ApplyTarget(target.lightOn, target.brightnessPercent, target.cctMireds, target.rgbMode,
+    int ret = GetLightDevice()->ApplyTarget(target.lightOn, target.brightnessPercent, target.cctMireds, target.rgbMode,
                                             target.red, target.green, target.blue);
-        if (ret != 0) {
-            LOG_ERR("WS2812B apply failed: %d", ret);
-            return ret;
-        }
+    if (ret != 0) {
+        LOG_ERR("WS2812B apply failed: %d", ret);
+        return ret;
     }
 
     ret = GetFanDevice()->ApplyTarget(target.fanOn, target.fanPercent);
@@ -607,8 +641,20 @@ int System::ApplyTarget(const ControlTarget& target) {
 }
 
 void System::SetSafeState() {
+    k_mutex_lock(&mLock, K_FOREVER);
     mMode = ControlMode::Safe;
-    mTarget = {false, 0, GetMemory()->Config().maxCCTMireds, false, 255, 255, 255, false, 0, 0.0f};
+    k_mutex_unlock(&mLock);
+
+    ControlTarget target = {};
+    SyncAppliedTargetFromDevices(target);
+    target.fanOn = false;
+    target.fanPercent = 0;
+    target.sensoryScore = 0.0f;
+
+    k_mutex_lock(&mLock, K_FOREVER);
+    mTarget = target;
+    mAppliedTarget = target;
+    k_mutex_unlock(&mLock);
 }
 
 void System::OnModeChanged(ControlMode previous, ControlMode current) {
@@ -616,42 +662,4 @@ void System::OnModeChanged(ControlMode previous, ControlMode current) {
         return;
     }
     LOG_INF("Mode changed: %u -> %u", static_cast<unsigned int>(previous), static_cast<unsigned int>(current));
-}
-
-void System::ShowBootOkStatus() {
-    StartStatusLed(255, 255, 255, 0, false);
-}
-
-void System::ShowErrorStatus() {
-    StartStatusLed(255, 0, 0, 0, false);
-}
-
-void System::ShowCommissioningStatus() {
-    StartStatusLed(0, 0, 255, 0, false);
-}
-
-void System::ShowCommissioningCompleteStatus() {
-    StartStatusLed(0, 255, 0, 3, true);
-}
-
-void System::StartStatusLed(uint8_t red, uint8_t green, uint8_t blue, uint8_t pulses, bool restoreWhenDone) {
-    k_work_cancel_delayable(&mStatusLedWork);
-    mStatusLedActive = true;
-    mStatusLedRestoreWhenDone = restoreWhenDone;
-    mStatusLedIncreasing = true;
-    mStatusLedRed = red;
-    mStatusLedGreen = green;
-    mStatusLedBlue = blue;
-    mStatusLedBrightness = 0;
-    mStatusLedPulsesRemaining = pulses;
-    k_work_schedule(&mStatusLedWork, K_NO_WAIT);
-}
-
-void System::RestoreControlLed() {
-    const int ret = GetLightDevice()->ApplyTarget(mAppliedTarget.lightOn, mAppliedTarget.brightnessPercent,
-                                                  mAppliedTarget.cctMireds, mAppliedTarget.rgbMode, mAppliedTarget.red,
-                                                  mAppliedTarget.green, mAppliedTarget.blue);
-    if (ret != 0) {
-        LOG_ERR("Control LED restore failed: %d", ret);
-    }
 }

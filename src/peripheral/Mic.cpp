@@ -15,9 +15,9 @@ namespace {
 #define MIC_WINDOW_MS 100U
 #define MIC_SAMPLES_PER_WINDOW (MIC_SAMPLE_RATE_HZ * MIC_WINDOW_MS / 1000U)
 #define MIC_BLOCK_BYTES (MIC_SAMPLES_PER_WINDOW * sizeof(int16_t))
-#define MIC_BUFFER_COUNT 4U
-#define MIC_READ_TIMEOUT_MS 250
-#define MIC_CAPTURE_STACK_SIZE 2048U
+#define MIC_BUFFER_COUNT 8U
+#define MIC_READ_TIMEOUT_MS 500
+#define MIC_CAPTURE_STACK_SIZE 3072U
 
 K_MEM_SLAB_DEFINE_STATIC(micBuffers, MIC_BLOCK_BYTES, MIC_BUFFER_COUNT, 4);
 K_THREAD_STACK_DEFINE(micCaptureStack, MIC_CAPTURE_STACK_SIZE);
@@ -123,15 +123,24 @@ void Mic::CaptureLoop() {
             mFeatures.valid = false;
             k_mutex_unlock(&mLock);
 
+            if (ret == -EAGAIN) {
+                if (consecutiveErrors == 1U || (consecutiveErrors % 20U) == 0U) {
+                    LOG_WRN("PDM capture delayed: %d (%u consecutive)", ret, consecutiveErrors);
+                }
+                continue;
+            }
+
             if (consecutiveErrors == 1U || (consecutiveErrors % 10U) == 0U) {
                 LOG_WRN("PDM read failed: %d (%u consecutive)", ret, consecutiveErrors);
             }
 
-            const int stopRet = dmic_trigger(dmicDevice, DMIC_TRIGGER_STOP);
-            const int startRet = dmic_trigger(dmicDevice, DMIC_TRIGGER_START);
-            if (stopRet != 0 || startRet != 0) {
-                LOG_ERR("PDM recovery failed: stop=%d start=%d", stopRet, startRet);
-                k_sleep(K_MSEC(500));
+            if (consecutiveErrors == 1U || (consecutiveErrors % 10U) == 0U) {
+                const int stopRet = dmic_trigger(dmicDevice, DMIC_TRIGGER_STOP);
+                const int startRet = dmic_trigger(dmicDevice, DMIC_TRIGGER_START);
+                if (stopRet != 0 || startRet != 0) {
+                    LOG_ERR("PDM recovery failed: stop=%d start=%d", stopRet, startRet);
+                    k_sleep(K_MSEC(500));
+                }
             }
             continue;
         }

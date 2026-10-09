@@ -17,23 +17,32 @@ class System final {
     int SetManualFan(bool on, uint8_t speedPercent);
     int UpdateConfig(const AppConfig& config);
     int FactoryReset();
-    void ShowBootOkStatus();
-    void ShowErrorStatus();
-    void ShowCommissioningStatus();
-    void ShowCommissioningCompleteStatus();
+    int RegisterMatterEndpoints();
 
     SensorSnapshot Snapshot() const {
-        return mSnapshot;
+        k_mutex_lock(&mLock, K_FOREVER);
+        const SensorSnapshot snapshot = mSnapshot;
+        k_mutex_unlock(&mLock);
+        return snapshot;
     }
     ControlTarget Target() const {
-        return mTarget;
+        k_mutex_lock(&mLock, K_FOREVER);
+        const ControlTarget target = mTarget;
+        k_mutex_unlock(&mLock);
+        return target;
     }
     ControlMode Mode() const {
-        return mMode;
+        k_mutex_lock(&mLock, K_FOREVER);
+        const ControlMode mode = mMode;
+        k_mutex_unlock(&mLock);
+        return mode;
     }
     uint32_t OverrideRemainingSeconds() const;
     bool Ready() const {
-        return mReady;
+        k_mutex_lock(&mLock, K_FOREVER);
+        const bool ready = mReady;
+        k_mutex_unlock(&mLock);
+        return ready;
     }
 
     System(const System&) = delete;
@@ -48,6 +57,7 @@ class System final {
     int InitializeRootNode();
     int InitializeAggregator();
     int RestoreChildDevices();
+    int StartMatterServer();
     int InitializeWorks();
     int InitializeResetButton();
     int StartMatterDispatch();
@@ -55,18 +65,15 @@ class System final {
     void SensorWork();
     void AlgorithmWork();
     void ActuatorRampWork();
-    void StatusLedWork();
     void SyncMatterDirtyDevices(bool force);
     int ApplyTarget(const ControlTarget& target);
     void SetSafeState();
     void OnModeChanged(ControlMode previous, ControlMode current);
-    void StartStatusLed(uint8_t red, uint8_t green, uint8_t blue, uint8_t pulses, bool restoreWhenDone);
-    void RestoreControlLed();
+    void SyncAppliedTargetFromDevices(ControlTarget& target);
 
     static void SensorWorkHandler(struct k_work* work);
     static void AlgorithmWorkHandler(struct k_work* work);
     static void ActuatorRampWorkHandler(struct k_work* work);
-    static void StatusLedWorkHandler(struct k_work* work);
     static void FactoryResetButtonWorkHandler(struct k_work* work);
     static void FactoryResetButtonCallback(const struct device* port, struct gpio_callback* callback,
                                            gpio_port_pins_t pins);
@@ -75,9 +82,9 @@ class System final {
     struct k_work_delayable mSensorWork;
     struct k_work_delayable mAlgorithmWork;
     struct k_work_delayable mActuatorRampWork;
-    struct k_work_delayable mStatusLedWork;
     struct k_work mFactoryResetButtonWork;
     struct gpio_callback mFactoryResetButtonCallback = {};
+    mutable struct k_mutex mLock;
     SensorSnapshot mSnapshot = {};
     ControlTarget mTarget = {};
     ControlTarget mManualTarget = {};
@@ -88,14 +95,6 @@ class System final {
     bool mMatterDispatchStarted = false;
     bool mFactoryResetRequested = false;
     bool mMatterChildEnabled[4] = {true, true, true, true};
-    bool mStatusLedActive = false;
-    bool mStatusLedRestoreWhenDone = false;
-    bool mStatusLedIncreasing = true;
-    uint8_t mStatusLedRed = 0;
-    uint8_t mStatusLedGreen = 0;
-    uint8_t mStatusLedBlue = 0;
-    uint8_t mStatusLedBrightness = 0;
-    uint8_t mStatusLedPulsesRemaining = 0;
 };
 
 inline System* GetSystem() {

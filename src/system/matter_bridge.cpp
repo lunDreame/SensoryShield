@@ -22,11 +22,16 @@
 #include <lib/support/ZclString.h>
 #include <platform/CHIPDeviceEvent.h>
 #include <platform/ConfigurationManager.h>
+#include <platform/ThreadStackManager.h>
+#include <openthread/link.h>
+#include <openthread/thread.h>
+#include <openthread.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/sys/util.h>
 
 #include <errno.h>
 #include <math.h>
+#include <stdio.h>
 #include <string.h>
 
 LOG_MODULE_REGISTER(matter_bridge, LOG_LEVEL_INF);
@@ -36,12 +41,13 @@ using namespace chip::app;
 using namespace chip::app::Clusters;
 
 namespace {
-constexpr EndpointId kRootEndpointId = 0;
 constexpr EndpointId kAggregatorEndpointId = 1;
 constexpr EndpointId kPlaceholderEndpointId = 2;
+constexpr EndpointId kFirstDynamicEndpointId = kPlaceholderEndpointId + 1U;
 constexpr AttributeId kClusterRevisionAttributeId = 0x0000FFFD;
 constexpr uint16_t kDescriptorAttributeArraySize = 254;
 constexpr uint16_t kNodeLabelSize = 32;
+constexpr uint16_t kUniqueIdSize = 32;
 constexpr uint8_t kDynamicEndpointCount = CHIP_DEVICE_CONFIG_DYNAMIC_ENDPOINT_COUNT;
 constexpr uint16_t kColorFeatureHueSaturation = 0x0001;
 constexpr uint16_t kColorFeatureColorTemperature = 0x0010;
@@ -84,6 +90,10 @@ void PutU16(uint8_t* buffer, uint16_t value) {
 }
 
 void PutU32(uint8_t* buffer, uint32_t value) {
+    memcpy(buffer, &value, sizeof(value));
+}
+
+void PutU64(uint8_t* buffer, uint64_t value) {
     memcpy(buffer, &value, sizeof(value));
 }
 
@@ -229,14 +239,19 @@ DECLARE_DYNAMIC_ATTRIBUTE(Descriptor::Attributes::DeviceTypeList::Id, ARRAY, kDe
 DECLARE_DYNAMIC_ATTRIBUTE_LIST_BEGIN(bridgedBasicAttrs)
 DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::NodeLabel::Id, CHAR_STRING, kNodeLabelSize, 0),
     DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::Reachable::Id, BOOLEAN, 1, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::UniqueID::Id, CHAR_STRING, kUniqueIdSize, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::ConfigurationVersion::Id, INT32U, 4, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::FeatureMap::Id, BITMAP32, 4, 0),
     DECLARE_DYNAMIC_ATTRIBUTE_LIST_END();
 
 DECLARE_DYNAMIC_ATTRIBUTE_LIST_BEGIN(onOffAttrs)
 DECLARE_DYNAMIC_ATTRIBUTE(OnOff::Attributes::OnOff::Id, BOOLEAN, 1, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(OnOff::Attributes::FeatureMap::Id, BITMAP32, 4, 0),
     DECLARE_DYNAMIC_ATTRIBUTE_LIST_END();
 
 DECLARE_DYNAMIC_ATTRIBUTE_LIST_BEGIN(levelControlAttrs)
 DECLARE_DYNAMIC_ATTRIBUTE(LevelControl::Attributes::CurrentLevel::Id, INT8U, 1, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(LevelControl::Attributes::FeatureMap::Id, BITMAP32, 4, 0),
     DECLARE_DYNAMIC_ATTRIBUTE_LIST_END();
 
 DECLARE_DYNAMIC_ATTRIBUTE_LIST_BEGIN(colorControlAttrs)
@@ -248,6 +263,7 @@ DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::CurrentHue::Id, INT8U, 1, 0)
     DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorCapabilities::Id, BITMAP16, 2, 0),
     DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorTempPhysicalMinMireds::Id, INT16U, 2, 0),
     DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorTempPhysicalMaxMireds::Id, INT16U, 2, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::FeatureMap::Id, BITMAP32, 4, 0),
     DECLARE_DYNAMIC_ATTRIBUTE_LIST_END();
 
 DECLARE_DYNAMIC_ATTRIBUTE_LIST_BEGIN(fanControlAttrs)
@@ -260,12 +276,14 @@ DECLARE_DYNAMIC_ATTRIBUTE(FanControl::Attributes::FanMode::Id, ENUM8, 1, ZAP_ATT
     DECLARE_DYNAMIC_ATTRIBUTE(FanControl::Attributes::SpeedSetting::Id, INT8U, 1,
                               ZAP_ATTRIBUTE_MASK(WRITABLE) | ZAP_ATTRIBUTE_MASK(NULLABLE)),
     DECLARE_DYNAMIC_ATTRIBUTE(FanControl::Attributes::SpeedCurrent::Id, INT8U, 1, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(FanControl::Attributes::FeatureMap::Id, BITMAP32, 4, 0),
     DECLARE_DYNAMIC_ATTRIBUTE_LIST_END();
 
 DECLARE_DYNAMIC_ATTRIBUTE_LIST_BEGIN(occupancySensingAttrs)
 DECLARE_DYNAMIC_ATTRIBUTE(OccupancySensing::Attributes::Occupancy::Id, BITMAP8, 1, 0),
     DECLARE_DYNAMIC_ATTRIBUTE(OccupancySensing::Attributes::OccupancySensorType::Id, ENUM8, 1, 0),
     DECLARE_DYNAMIC_ATTRIBUTE(OccupancySensing::Attributes::OccupancySensorTypeBitmap::Id, BITMAP8, 1, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(OccupancySensing::Attributes::FeatureMap::Id, BITMAP32, 4, 0),
     DECLARE_DYNAMIC_ATTRIBUTE_LIST_END();
 
 DECLARE_DYNAMIC_ATTRIBUTE_LIST_BEGIN(illuminanceMeasurementAttrs)
@@ -276,6 +294,7 @@ DECLARE_DYNAMIC_ATTRIBUTE(IlluminanceMeasurement::Attributes::MeasuredValue::Id,
                               ZAP_ATTRIBUTE_MASK(NULLABLE)),
     DECLARE_DYNAMIC_ATTRIBUTE(IlluminanceMeasurement::Attributes::LightSensorType::Id, ENUM8, 1,
                               ZAP_ATTRIBUTE_MASK(NULLABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(IlluminanceMeasurement::Attributes::FeatureMap::Id, BITMAP32, 4, 0),
     DECLARE_DYNAMIC_ATTRIBUTE_LIST_END();
 
 constexpr CommandId onOffCommands[] = {OnOff::Commands::Off::Id, OnOff::Commands::On::Id,
@@ -390,6 +409,22 @@ Protocols::InteractionModel::Status ReadBridgedBasic(Device& device, AttributeId
         return MakeZclCharString(label, DeviceLabel(device)) == CHIP_NO_ERROR
                    ? Protocols::InteractionModel::Status::Success
                    : Protocols::InteractionModel::Status::Failure;
+    }
+    if (attributeId == BridgedDeviceBasicInformation::Attributes::UniqueID::Id && maxReadLength >= kUniqueIdSize) {
+        char uniqueId[kUniqueIdSize] = {};
+        snprintf(uniqueId, sizeof(uniqueId), "sensoryshield-%u", static_cast<unsigned int>(device.LogicalId()));
+        MutableByteSpan uniqueIdSpan(buffer, maxReadLength);
+        return MakeZclCharString(uniqueIdSpan, uniqueId) == CHIP_NO_ERROR
+                   ? Protocols::InteractionModel::Status::Success
+                   : Protocols::InteractionModel::Status::Failure;
+    }
+    if (attributeId == BridgedDeviceBasicInformation::Attributes::ConfigurationVersion::Id &&
+        maxReadLength >= sizeof(uint32_t)) {
+        PutU32(buffer, 1);
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (ReadFeatureMap(attributeId, buffer, maxReadLength, 0) == Protocols::InteractionModel::Status::Success) {
+        return Protocols::InteractionModel::Status::Success;
     }
     return ReadClusterRevision(attributeId, buffer, maxReadLength, 2);
 }
@@ -541,6 +576,37 @@ Protocols::InteractionModel::Status ReadIlluminanceMeasurement(AttributeId attri
     return ReadClusterRevision(attributeId, buffer, maxReadLength, 3);
 }
 
+Protocols::InteractionModel::Status ReadThreadNetworkDiagnostics(AttributeId attributeId, uint8_t* buffer,
+                                                                 uint16_t maxReadLength) {
+    if (attributeId == ThreadNetworkDiagnostics::Attributes::ExtAddress::Id &&
+        maxReadLength >= sizeof(uint64_t)) {
+        chip::DeviceLayer::ThreadStackMgr().LockThreadStack();
+        otInstance* instance = openthread_get_default_instance();
+        const otExtAddress* address = instance != nullptr ? otLinkGetExtendedAddress(instance) : nullptr;
+        uint64_t value = UINT64_MAX;
+        if (address != nullptr) {
+            value = 0;
+            for (uint8_t index = 0; index < sizeof(address->m8); ++index) {
+                value = (value << 8U) | address->m8[index];
+            }
+        }
+        chip::DeviceLayer::ThreadStackMgr().UnlockThreadStack();
+        PutU64(buffer, value);
+        return Protocols::InteractionModel::Status::Success;
+    }
+
+    if (attributeId == ThreadNetworkDiagnostics::Attributes::Rloc16::Id && maxReadLength >= sizeof(uint16_t)) {
+        chip::DeviceLayer::ThreadStackMgr().LockThreadStack();
+        otInstance* instance = openthread_get_default_instance();
+        const uint16_t rloc16 = instance != nullptr ? otThreadGetRloc16(instance) : 0xFFFF;
+        chip::DeviceLayer::ThreadStackMgr().UnlockThreadStack();
+        PutU16(buffer, rloc16);
+        return Protocols::InteractionModel::Status::Success;
+    }
+
+    return Protocols::InteractionModel::Status::Failure;
+}
+
 Protocols::InteractionModel::Status ApplyOnOffWrite(Device& device, uint8_t* buffer) {
     const bool on = *buffer != 0;
     if (device.LogicalId() == LightDevice::Instance().LogicalId()) {
@@ -622,6 +688,10 @@ Protocols::InteractionModel::Status ApplyFanWrite(AttributeId attributeId, uint8
 
 } // namespace
 
+MatterBridge::MatterBridge() {
+    k_mutex_init(&mLock);
+}
+
 namespace chip::app::Clusters::ColorControl {
 
 bool SensoryShieldMoveToHueCallback(CommandHandler* commandObj, const ConcreteCommandPath& commandPath,
@@ -677,11 +747,19 @@ MatterBridge& MatterBridge::Instance() {
 }
 
 int MatterBridge::Initialize() {
-    if (mReady) {
+    if (Ready()) {
         return 0;
     }
 
-    CHIP_ERROR err = Nrf::Matter::PrepareServer(Nrf::Matter::InitData{});
+    CHIP_ERROR err = Nrf::Matter::PrepareServer(Nrf::Matter::InitData{ .mPostServerInitClbk = []() -> CHIP_ERROR {
+        const int ret = GetSystem()->RegisterMatterEndpoints();
+        if (ret != 0) {
+            LOG_ERR("Matter endpoint registration after server init failed: %d", ret);
+            return CHIP_ERROR_INTERNAL;
+        }
+        LOG_INF("Matter endpoint model registered after server init");
+        return CHIP_NO_ERROR;
+    } });
     if (err != CHIP_NO_ERROR) {
         LOG_ERR("Matter server preparation failed: 0x%08x", err.AsInteger());
         return -EIO;
@@ -693,16 +771,33 @@ int MatterBridge::Initialize() {
         return -EIO;
     }
 
-    err = Nrf::Matter::StartServer();
+    k_mutex_lock(&mLock, K_FOREVER);
+    mReady = true;
+    k_mutex_unlock(&mLock);
+    LOG_INF("Matter server prepared");
+    return 0;
+}
+
+int MatterBridge::StartServer() {
+    if (!Ready()) {
+        return -EAGAIN;
+    }
+    if (Started()) {
+        return 0;
+    }
+
+    CHIP_ERROR err = Nrf::Matter::StartServer();
     if (err != CHIP_NO_ERROR) {
         LOG_ERR("Matter server start failed: 0x%08x", err.AsInteger());
         return -EIO;
     }
 
+    k_mutex_lock(&mLock, K_FOREVER);
     mFabricCount = Server::GetInstance().GetFabricTable().FabricCount();
     mCommissioned = mFabricCount > 0U;
-    mReady = true;
-    LOG_INF("Matter server started with BLE commissioning and Thread transport enabled");
+    mStarted = true;
+    k_mutex_unlock(&mLock);
+    LOG_INF("Matter server started after endpoint model setup");
     return 0;
 }
 
@@ -710,48 +805,54 @@ void MatterBridge::HandleEvent(const DeviceLayer::ChipDeviceEvent* event, intptr
     MatterBridge& bridge = Instance();
     switch (event->Type) {
     case DeviceLayer::DeviceEventType::kCHIPoBLEAdvertisingChange:
+    {
+        k_mutex_lock(&bridge.mLock, K_FOREVER);
         bridge.mCommissioningActive =
             event->CHIPoBLEAdvertisingChange.Result == DeviceLayer::kActivity_Started && !bridge.mCommissioned;
-        if (!bridge.mCommissioned) {
-            if (bridge.mCommissioningActive) {
-                GetSystem()->ShowCommissioningStatus();
-            } else {
-                GetSystem()->ShowBootOkStatus();
-            }
-        }
-        LOG_INF("BLE commissioning advertising %s", bridge.mCommissioningActive ? "started" : "stopped");
+        const bool commissioningActive = bridge.mCommissioningActive;
+        k_mutex_unlock(&bridge.mLock);
+        LOG_INF("BLE commissioning advertising %s", commissioningActive ? "started" : "stopped");
         break;
+    }
     case DeviceLayer::DeviceEventType::kCommissioningComplete:
+    {
+        k_mutex_lock(&bridge.mLock, K_FOREVER);
         bridge.mFabricCount = Server::GetInstance().GetFabricTable().FabricCount();
         bridge.mCommissioned = bridge.mFabricCount > 0U;
         bridge.mCommissioningActive = false;
-        if (bridge.mCommissioned) {
-            GetSystem()->ShowCommissioningCompleteStatus();
-        }
-        LOG_INF("Commissioning complete: fabrics=%u", bridge.mFabricCount);
+        const uint8_t fabricCount = bridge.mFabricCount;
+        k_mutex_unlock(&bridge.mLock);
+        LOG_INF("Commissioning complete: fabrics=%u", fabricCount);
         break;
+    }
     case DeviceLayer::DeviceEventType::kFailSafeTimerExpired:
+        k_mutex_lock(&bridge.mLock, K_FOREVER);
         bridge.mFabricCount = Server::GetInstance().GetFabricTable().FabricCount();
         bridge.mCommissioned = bridge.mFabricCount > 0U;
         bridge.mCommissioningActive = false;
-        if (!bridge.mCommissioned) {
-            GetSystem()->ShowErrorStatus();
-        }
+        k_mutex_unlock(&bridge.mLock);
         LOG_WRN("Commissioning failed: fail-safe expired");
         break;
     case DeviceLayer::DeviceEventType::kServerReady:
         LOG_INF("Matter server ready");
         break;
     case DeviceLayer::DeviceEventType::kThreadConnectivityChange:
+    {
+        k_mutex_lock(&bridge.mLock, K_FOREVER);
         bridge.mThreadAttached = event->ThreadConnectivityChange.Result ==
                                  DeviceLayer::ConnectivityChange::kConnectivity_Established;
-        LOG_INF("Thread %s", bridge.mThreadAttached ? "attached" : "detached");
+        const bool threadAttached = bridge.mThreadAttached;
+        k_mutex_unlock(&bridge.mLock);
+        LOG_INF("Thread %s", threadAttached ? "attached" : "detached");
         break;
+    }
     case DeviceLayer::DeviceEventType::kFactoryReset:
+        k_mutex_lock(&bridge.mLock, K_FOREVER);
         bridge.mCommissioned = false;
         bridge.mCommissioningActive = false;
         bridge.mThreadAttached = false;
         bridge.mFabricCount = 0;
+        k_mutex_unlock(&bridge.mLock);
         LOG_INF("Matter factory reset started");
         break;
     default:
@@ -764,25 +865,27 @@ void MatterBridge::Dispatch() {
 }
 
 int MatterBridge::InitializeRootNode() {
-    return mReady ? 0 : -EAGAIN;
+    return Ready() ? 0 : -EAGAIN;
 }
 
 int MatterBridge::InitializeAggregator() {
-    if (!mReady) {
+    if (!Ready()) {
         return -EAGAIN;
+    }
+    if (gFirstDynamicEndpoint != 0U) {
+        return 0;
     }
 
     emberAfEndpointEnableDisable(kPlaceholderEndpointId, false);
     emberAfSetDeviceTypeList(kAggregatorEndpointId, Span<const EmberAfDeviceType>(aggregatorDeviceTypes));
-    gFirstDynamicEndpoint = static_cast<EndpointId>(
-        static_cast<uint16_t>(emberAfEndpointFromIndex(static_cast<uint16_t>(emberAfFixedEndpointCount() - 1))) + 1U);
+    gFirstDynamicEndpoint = kFirstDynamicEndpointId;
     gCurrentDynamicEndpoint = gFirstDynamicEndpoint;
     LOG_INF("Matter aggregator ready: endpoint=%u first_dynamic=%u", kAggregatorEndpointId, gFirstDynamicEndpoint);
     return 0;
 }
 
 int MatterBridge::CreateChildEndpoint(Device& device, const char* label) {
-    if (!mReady) {
+    if (!Ready()) {
         return -EAGAIN;
     }
     ARG_UNUSED(label);
@@ -815,7 +918,7 @@ int MatterBridge::CreateChildEndpoint(Device& device, const char* label) {
 }
 
 int MatterBridge::PublishDeviceState(Device& device) {
-    if (!mReady) {
+    if (!Ready() || !Started()) {
         return -EAGAIN;
     }
     const EndpointId endpoint = device.EndpointId();
@@ -863,15 +966,18 @@ int MatterBridge::PublishDeviceState(Device& device) {
 }
 
 int MatterBridge::FactoryReset() {
-    if (!mReady) {
+    if (!Ready()) {
         return -EAGAIN;
     }
 
+    k_mutex_lock(&mLock, K_FOREVER);
     mCommissioned = false;
     mCommissioningActive = false;
     mThreadAttached = false;
     mFabricCount = 0;
+    mStarted = false;
     mReady = false;
+    k_mutex_unlock(&mLock);
     chip::DeviceLayer::ConfigurationMgr().InitiateFactoryReset();
     LOG_INF("Matter factory reset requested, device will reboot");
     return 0;
@@ -880,8 +986,16 @@ int MatterBridge::FactoryReset() {
 Protocols::InteractionModel::Status emberAfExternalAttributeReadCallback(
     EndpointId endpoint, ClusterId clusterId, const EmberAfAttributeMetadata* attributeMetadata, uint8_t* buffer,
     uint16_t maxReadLength) {
+    if (attributeMetadata == nullptr || buffer == nullptr) {
+        return Protocols::InteractionModel::Status::Failure;
+    }
+
+    if (endpoint == chip::kRootEndpointId && clusterId == ThreadNetworkDiagnostics::Id) {
+        return ReadThreadNetworkDiagnostics(attributeMetadata->attributeId, buffer, maxReadLength);
+    }
+
     Device* device = DeviceFromEndpoint(endpoint);
-    if (device == nullptr || attributeMetadata == nullptr || buffer == nullptr) {
+    if (device == nullptr) {
         return Protocols::InteractionModel::Status::Failure;
     }
 

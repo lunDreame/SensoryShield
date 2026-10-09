@@ -1,6 +1,6 @@
 import type { AppConfig, ControlMode, StatusResponse, SystemHealth } from "../types/domain";
 
-export const fallbackStatus: StatusResponse = {
+export const initialStatus: StatusResponse = {
   sensor: {
     lux: 0,
     occupied: false,
@@ -26,7 +26,7 @@ export const fallbackStatus: StatusResponse = {
     mode: "SAFE",
     overrideRemainingSeconds: 0,
     uptimeSeconds: 0,
-    firmware: "local-preview",
+    firmware: "SensoryShield",
     matter: {
       commissioned: false,
       fabricCount: 0,
@@ -59,14 +59,14 @@ function normalizeMode(mode: unknown): ControlMode {
 
 function normalizeStatus(raw: RawStatusResponse): StatusResponse {
   return {
-    sensor: { ...fallbackStatus.sensor, ...(raw.sensor ?? {}) },
-    outputs: { ...fallbackStatus.outputs, ...(raw.outputs ?? {}) },
+    sensor: { ...initialStatus.sensor, ...(raw.sensor ?? {}) },
+    outputs: { ...initialStatus.outputs, ...(raw.outputs ?? {}) },
     system: {
-      ...fallbackStatus.system,
+      ...initialStatus.system,
       ...(raw.system ?? {}),
       mode: normalizeMode(raw.system?.mode),
-      matter: { ...fallbackStatus.system.matter, ...(raw.system?.matter ?? {}) },
-      storage: { ...fallbackStatus.system.storage, ...(raw.system?.storage ?? {}) }
+      matter: { ...initialStatus.system.matter, ...(raw.system?.matter ?? {}) },
+      storage: { ...initialStatus.system.storage, ...(raw.system?.storage ?? {}) }
     }
   };
 }
@@ -87,7 +87,7 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 2500): P
 }
 
 export async function getStatus(): Promise<StatusResponse> {
-  return normalizeStatus(await request<RawStatusResponse>("/api/status", undefined, 1200));
+  return normalizeStatus(await request<RawStatusResponse>("/api/status", undefined, 5000));
 }
 
 export function setMode(mode: ControlMode, durationMinutes = 15): Promise<{ ok: boolean }> {

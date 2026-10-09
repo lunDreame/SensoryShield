@@ -9,6 +9,11 @@
 
 LOG_MODULE_REGISTER(illuminance_device, LOG_LEVEL_INF);
 
+namespace {
+constexpr float kLuxPublishDelta = 10.0f;
+constexpr int64_t kLuxPublishMinIntervalMs = 5000;
+} // namespace
+
 IlluminanceDevice::IlluminanceDevice() : Device(4) {}
 
 IlluminanceDevice& IlluminanceDevice::Instance() {
@@ -19,6 +24,7 @@ IlluminanceDevice& IlluminanceDevice::Instance() {
 int IlluminanceDevice::Initialize() {
     mCurrentLux = 0.0f;
     mPreviousLux = -1000.0f;
+    mLastPublishMs = -1;
     mValid = false;
     mPreviousValid = false;
     MarkMatterDirty();
@@ -41,15 +47,20 @@ void IlluminanceDevice::SetCurrentLux(float lux, bool valid) {
     const bool wasValid = mValid;
     mCurrentLux = lux;
     mValid = valid;
-    if (wasValid != valid || (valid && fabsf(mCurrentLux - mPreviousLux) >= 5.0f)) {
+    if (wasValid != valid || (valid && fabsf(mCurrentLux - mPreviousLux) >= kLuxPublishDelta)) {
         MarkMatterDirty();
     }
 }
 
 int IlluminanceDevice::UpdateToMatter(bool force) {
-    const bool deltaChanged = mValid && fabsf(mCurrentLux - mPreviousLux) >= 5.0f;
+    const bool deltaChanged = mValid && fabsf(mCurrentLux - mPreviousLux) >= kLuxPublishDelta;
     const bool validityChanged = mValid != mPreviousValid;
     if (!force && !MatterDirty() && !deltaChanged && !validityChanged) {
+        return 0;
+    }
+    const int64_t nowMs = k_uptime_get();
+    if (!force && !validityChanged && mLastPublishMs >= 0 && (nowMs - mLastPublishMs) < kLuxPublishMinIntervalMs) {
+        MarkMatterDirty();
         return 0;
     }
 
@@ -63,6 +74,7 @@ int IlluminanceDevice::UpdateToMatter(bool force) {
         mPreviousLux = mCurrentLux;
     }
     mPreviousValid = mValid;
+    mLastPublishMs = nowMs;
     ClearMatterDirty();
     const int32_t luxTenths = static_cast<int32_t>((mCurrentLux * 10.0f) + 0.5f);
     LOG_INF("Illuminance published: lux=%d.%u", luxTenths / 10, static_cast<unsigned int>(luxTenths % 10));

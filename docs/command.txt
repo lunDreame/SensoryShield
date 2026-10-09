@@ -2,4 +2,6 @@ echo 'export PATH="$HOME/.nrfutil/bin:$PATH"' >> ~/.zshrc
 source ~/.zshrc
 nrfutil device list
 
-nrfutil device erase --all --serial-number [number]
+nrfutil device erase --all --serial-number 1051820426
+
+tio -b 115200 /dev/cu.usbmodem0010518204263
