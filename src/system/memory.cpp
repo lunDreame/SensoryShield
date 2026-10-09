@@ -123,7 +123,7 @@ int Memory::LoadDeviceTable(ChildDeviceDescriptor* devices, uint8_t maxDevices, 
         memcpy(devices, table.devices, sizeof(ChildDeviceDescriptor) * (*count));
     } else {
         if (ret == 0) {
-            LOG_WRN("Stored device table is invalid; using defaults");
+            LOG_WRN("Stored device table is invalid, using defaults");
             (void)settings_delete(DEVICE_TABLE_KEY);
         }
         *count = 0;

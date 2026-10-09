@@ -199,7 +199,7 @@ int System::InitializeMatter() {
 
     ret = InitializeAggregator();
     if (ret == -ENOTSUP) {
-        LOG_WRN("Matter server is active; aggregator and remaining endpoints are not in the data model yet");
+        LOG_WRN("Matter server is active, aggregator and remaining endpoints are not in the data model yet");
         return 0;
     }
     if (ret != 0) {
@@ -436,7 +436,7 @@ void System::FactoryResetButtonWork() {
     }
 
     mFactoryResetRequested = true;
-    LOG_WRN("Button0 requested system + Matter factory reset");
+    LOG_WRN("Button0 requested factory reset");
     const int ret = FactoryReset();
     if (ret != 0) {
         mFactoryResetRequested = false;

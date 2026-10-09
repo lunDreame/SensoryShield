@@ -67,6 +67,10 @@ int FanDevice::ApplyTarget(bool on, uint8_t speedPercent) {
     const uint8_t maxPercent = GetMemory()->Config().fanMaxPercent;
     const FanState next = {on, static_cast<uint8_t>(on ? ClampValue<uint8_t>(speedPercent, 0, maxPercent) : 0)};
 
+    if (!HasChanged(mCurrentState, next)) {
+        return 0;
+    }
+
     const int ret = GetFan()->SetSpeed(next.speedPercent);
     if (ret != 0) {
         return ret;

@@ -1,0 +1,5 @@
+echo 'export PATH="$HOME/.nrfutil/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+nrfutil device list
+
+nrfutil device erase --all --serial-number [number]

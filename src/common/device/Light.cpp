@@ -97,6 +97,10 @@ int LightDevice::ApplyTarget(bool on, uint8_t brightnessPercent, uint16_t cctMir
                        ClampValue<uint16_t>(cctMireds, config.minCCTMireds, config.maxCCTMireds), rgbMode, red, green,
                        blue};
 
+    if (!HasChanged(mCurrentState, next)) {
+        return 0;
+    }
+
     const int ret = next.rgbMode
                         ? GetWS2812B()->SetRgbTarget(next.on, next.brightnessPercent, next.red, next.green, next.blue)
                         : GetWS2812B()->SetWhiteTarget(next.on, next.brightnessPercent,

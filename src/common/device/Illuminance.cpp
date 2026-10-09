@@ -19,7 +19,6 @@ IlluminanceDevice& IlluminanceDevice::Instance() {
 int IlluminanceDevice::Initialize() {
     mCurrentLux = 0.0f;
     mPreviousLux = -1000.0f;
-    mLastPublishMs = 0;
     mValid = false;
     mPreviousValid = false;
     MarkMatterDirty();
@@ -48,14 +47,9 @@ void IlluminanceDevice::SetCurrentLux(float lux, bool valid) {
 }
 
 int IlluminanceDevice::UpdateToMatter(bool force) {
-    const uint32_t now = k_uptime_get_32();
-    const bool intervalElapsed = (now - mLastPublishMs) >= 5000U;
     const bool deltaChanged = mValid && fabsf(mCurrentLux - mPreviousLux) >= 5.0f;
     const bool validityChanged = mValid != mPreviousValid;
-    if (!force && !MatterDirty() && !deltaChanged && !intervalElapsed) {
-        return 0;
-    }
-    if (!force && !MatterDirty() && !validityChanged && !mValid) {
+    if (!force && !MatterDirty() && !deltaChanged && !validityChanged) {
         return 0;
     }
 
@@ -69,7 +63,6 @@ int IlluminanceDevice::UpdateToMatter(bool force) {
         mPreviousLux = mCurrentLux;
     }
     mPreviousValid = mValid;
-    mLastPublishMs = now;
     ClearMatterDirty();
     LOG_INF("Illuminance published: %s", mValid ? "valid" : "invalid");
     return 0;

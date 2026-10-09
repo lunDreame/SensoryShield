@@ -702,7 +702,7 @@ int MatterBridge::Initialize() {
     mFabricCount = Server::GetInstance().GetFabricTable().FabricCount();
     mCommissioned = mFabricCount > 0U;
     mReady = true;
-    LOG_INF("Matter server started; BLE commissioning and Thread transport enabled");
+    LOG_INF("Matter server started with BLE commissioning and Thread transport enabled");
     return 0;
 }
 
@@ -873,7 +873,7 @@ int MatterBridge::FactoryReset() {
     mFabricCount = 0;
     mReady = false;
     chip::DeviceLayer::ConfigurationMgr().InitiateFactoryReset();
-    LOG_INF("Matter factory reset requested; the device will reboot");
+    LOG_INF("Matter factory reset requested, device will reboot");
     return 0;
 }
 
