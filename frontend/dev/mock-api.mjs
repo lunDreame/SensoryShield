@@ -6,8 +6,8 @@ export function mockApi() {
   let manualLight = { lightOn: true, brightnessPercent: 60, cctMireds: 370, rgbMode: false, red: 255, green: 255, blue: 255 };
   let overrideUntil = 0;
   const started = Date.now();
-  let profile = { lightWeight: 0.55, soundWeight: 0.45, minBrightness: 5, maxBrightness: 85,
-    minCCTMireds: 250, maxCCTMireds: 454, fanMaxPercent: 80, occupancyTimeoutMs: 300000,
+  let profile = { lightWeight: 0.55, soundWeight: 0.45, minBrightness: 1, maxBrightness: 100,
+    minCCTMireds: 250, maxCCTMireds: 454, fanMaxPercent: 100, occupancyTimeoutMs: 30000,
     profileConfigured: false };
   const scenarios = ["normal", "noise", "impulse", "mic-error", "vacant", "offline", "command-error"];
   const panel = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>Mock 시나리오</title>
@@ -50,7 +50,7 @@ export function mockApi() {
         const micError = scenario === "mic-error";
         const vacant = scenario === "vacant";
         const impulse = scenario === "impulse" && Math.floor(Date.now()/1500)%4 === 0;
-        const autoSpeed = vacant || profile.fanMaxPercent < 18 ? 0 : Math.min(profile.fanMaxPercent, noise || micError ? 18 : 30);
+        const autoSpeed = vacant || profile.fanMaxPercent === 0 ? 0 : Math.min(profile.fanMaxPercent, noise || micError ? 20 : 60);
         if (path === "/api/profile") {
           if (req.method === "POST") profile = {...profile, ...body};
           send(200,req.method === "POST" ? {ok:true} : profile);return;

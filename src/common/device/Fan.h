@@ -20,6 +20,7 @@ class FanDevice final : public Device {
     int UpdateToMatter(bool force = false) override;
     int ApplyCommand(const DeviceCommand& command) override;
     int ApplyTarget(bool on, uint8_t speedPercent);
+    int ApplyTargetNoMatter(bool on, uint8_t speedPercent);
     FanState CurrentState() const {
         return mCurrentState;
     }
@@ -30,6 +31,8 @@ class FanDevice final : public Device {
   private:
     FanDevice();
     ~FanDevice() override = default;
+
+    int ApplyTargetInternal(bool on, uint8_t speedPercent, bool publishMatter);
 
     FanState mCurrentState = {};
     FanState mPreviousPublished = {};

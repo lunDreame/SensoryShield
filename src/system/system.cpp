@@ -23,12 +23,9 @@
 LOG_MODULE_REGISTER(system, LOG_LEVEL_INF);
 
 namespace {
-constexpr size_t kMatterDispatchStackSize = 4096;
 #if DT_NODE_HAS_STATUS(DT_ALIAS(sw0), okay)
 const struct gpio_dt_spec factoryResetButton = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
 #endif
-K_THREAD_STACK_DEFINE(matterDispatchStack, kMatterDispatchStackSize);
-struct k_thread matterDispatchThread;
 } // namespace
 
 System::System() {
@@ -83,6 +80,11 @@ int System::Initialize() {
         return ret;
     }
 
+    ret = RestoreRuntimeState();
+    if (ret != 0) {
+        LOG_WRN("Runtime state restore skipped: %d", ret);
+    }
+
     ret = StartMatterServer();
     if (ret != 0) {
         SetSafeState();
@@ -109,14 +111,13 @@ int System::Initialize() {
 
 int System::InitializePeripherals() {
     int firstError = 0;
-    const AppConfig config = GetMemory()->Config();
 
     int ret = GetBH1750()->Initialize();
     if (ret != 0 && firstError == 0) {
         firstError = ret;
     }
 
-    ret = GetPIR()->Initialize(config.occupancyTimeoutMs);
+    ret = GetPIR()->Initialize();
     if (ret != 0 && firstError == 0) {
         firstError = ret;
     }
@@ -279,6 +280,41 @@ int System::RegisterMatterEndpoints() {
     return 0;
 }
 
+int System::RestoreRuntimeState() {
+    ControlMode mode = ControlMode::Auto;
+    ControlTarget target = {};
+    int ret = GetMemory()->LoadRuntimeState(&mode, &target);
+    if (ret == -ENOENT) {
+        return 0;
+    }
+    if (ret != 0) {
+        return ret;
+    }
+
+    if (mode == ControlMode::Manual) {
+        ret = GetLightDevice()->ApplyTargetNoMatter(target.lightOn, target.brightnessPercent, target.cctMireds,
+                                                    target.rgbMode, target.red, target.green, target.blue);
+        if (ret != 0) {
+            return ret;
+        }
+        ret = GetFanDevice()->ApplyTargetNoMatter(target.fanOn, target.fanPercent);
+        if (ret != 0) {
+            return ret;
+        }
+        SyncAppliedTargetFromDevices(target);
+    }
+
+    k_mutex_lock(&mLock, K_FOREVER);
+    mManualTarget = target;
+    mTarget = mode == ControlMode::Manual ? target : mTarget;
+    mAppliedTarget = mode == ControlMode::Manual ? target : mAppliedTarget;
+    mMode = mode;
+    mOverrideDeadlineMs = 0;
+    k_mutex_unlock(&mLock);
+    LOG_INF("Runtime state restored: mode=%u", static_cast<unsigned int>(mode));
+    return 0;
+}
+
 int System::StartMatterServer() {
     int ret = GetMatterBridge()->StartServer();
     if (ret != 0) {
@@ -290,28 +326,9 @@ int System::StartMatterServer() {
 }
 
 int System::InitializeWorks() {
-    const int ret = StartMatterDispatch();
-    if (ret != 0) {
-        return ret;
-    }
     k_work_schedule(&mSensorWork, K_NO_WAIT);
     k_work_schedule(&mAlgorithmWork, K_MSEC(ALGORITHM_PERIOD_MS));
     k_work_schedule(&mActuatorRampWork, K_MSEC(ACTUATOR_RAMP_MS));
-    return 0;
-}
-
-int System::StartMatterDispatch() {
-    if (mMatterDispatchStarted) {
-        return 0;
-    }
-    if (!GetMatterBridge()->Started()) {
-        return 0;
-    }
-
-    k_thread_create(&matterDispatchThread, matterDispatchStack, K_THREAD_STACK_SIZEOF(matterDispatchStack),
-                    MatterDispatchThread, this, nullptr, nullptr, K_PRIO_PREEMPT(6), 0, K_NO_WAIT);
-    k_thread_name_set(&matterDispatchThread, "matter_dispatch");
-    mMatterDispatchStarted = true;
     return 0;
 }
 
@@ -325,8 +342,12 @@ int System::SetMode(ControlMode mode, uint32_t overrideDurationMs) {
     const ControlMode previous = mMode;
     mMode = mode;
     const ControlMode current = mMode;
+    const ControlTarget target = mManualTarget;
     k_mutex_unlock(&mLock);
     OnModeChanged(previous, current);
+    if (previous != current) {
+        PersistRuntimeState(current, target);
+    }
     return 0;
 }
 
@@ -480,15 +501,6 @@ void System::ActuatorRampWorkHandler(struct k_work* work) {
     system->ActuatorRampWork();
 }
 
-void System::MatterDispatchThread(void* first, void* second, void* third) {
-    ARG_UNUSED(first);
-    ARG_UNUSED(second);
-    ARG_UNUSED(third);
-    while (true) {
-        GetMatterBridge()->Dispatch();
-    }
-}
-
 void System::SensorWork() {
     float lux = 0.0f;
     const int luxRet = GetBH1750()->ReadLux(&lux);
@@ -625,14 +637,14 @@ void System::SyncAppliedTargetFromDevices(ControlTarget& target) {
 }
 
 int System::ApplyTarget(const ControlTarget& target) {
-    int ret = GetLightDevice()->ApplyTarget(target.lightOn, target.brightnessPercent, target.cctMireds, target.rgbMode,
-                                            target.red, target.green, target.blue);
+    int ret = GetLightDevice()->ApplyTargetNoMatter(target.lightOn, target.brightnessPercent, target.cctMireds,
+                                                    target.rgbMode, target.red, target.green, target.blue);
     if (ret != 0) {
         LOG_ERR("WS2812B apply failed: %d", ret);
         return ret;
     }
 
-    ret = GetFanDevice()->ApplyTarget(target.fanOn, target.fanPercent);
+    ret = GetFanDevice()->ApplyTargetNoMatter(target.fanOn, target.fanPercent);
     if (ret != 0) {
         LOG_ERR("Fan apply failed: %d", ret);
         return ret;
@@ -662,4 +674,11 @@ void System::OnModeChanged(ControlMode previous, ControlMode current) {
         return;
     }
     LOG_INF("Mode changed: %u -> %u", static_cast<unsigned int>(previous), static_cast<unsigned int>(current));
+}
+
+void System::PersistRuntimeState(ControlMode mode, const ControlTarget& target) {
+    const int ret = GetMemory()->SaveRuntimeState(mode, target);
+    if (ret != 0) {
+        LOG_WRN("Runtime state save skipped: %d", ret);
+    }
 }

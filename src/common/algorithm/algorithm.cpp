@@ -24,12 +24,19 @@ void Algorithm::SetConfig(const AppConfig& config) {
 }
 
 ControlTarget Algorithm::Evaluate(const SensorSnapshot& snapshot) {
-    const StimulusScore stimulus = mStimulusScorer.Evaluate(snapshot, mConfig);
+    SensorSnapshot effectiveSnapshot = snapshot;
+    const uint32_t now = k_uptime_get_32();
+    if (snapshot.pirValid && !snapshot.occupied && snapshot.lastMotionMs != 0U &&
+        (now - snapshot.lastMotionMs) <= mConfig.occupancyTimeoutMs) {
+        effectiveSnapshot.occupied = true;
+    }
+
+    const StimulusScore stimulus = mStimulusScorer.Evaluate(effectiveSnapshot, mConfig);
 
     ControlTarget target = mPreviousTarget;
     target.sensoryScore = stimulus.combined;
-    const LightTarget light = mLightPresence.Evaluate(snapshot, mConfig, stimulus.combined);
-    const uint8_t fanPercent = mSoundFan.Evaluate(snapshot, mConfig, k_uptime_get_32());
+    const LightTarget light = mLightPresence.Evaluate(effectiveSnapshot, mConfig, stimulus.combined);
+    const uint8_t fanPercent = mSoundFan.Evaluate(effectiveSnapshot, mConfig, now);
 
     target.lightOn = light.on;
     target.brightnessPercent = light.brightnessPercent;

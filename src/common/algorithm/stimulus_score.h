@@ -16,10 +16,10 @@ class StimulusScorer final {
     StimulusScore Evaluate(const SensorSnapshot& snapshot, const AppConfig& config);
 
   private:
-    static constexpr float LuxNoiseFloor = 5.0f;
-    static constexpr float SoundNoiseFloor = 0.005f;
+    static constexpr float LuxNoiseFloor = 2.0f;
+    static constexpr float SoundNoiseFloor = 0.0025f;
     static constexpr float BaselineLearningLimit = 1.5f;
-    static constexpr float MaximumScore = 8.0f;
+    static constexpr float MaximumScore = STIMULUS_MAX_SCORE;
 
     RollingBaseline mLuxBaseline;
     RollingBaseline mSoundBaseline;

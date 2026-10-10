@@ -606,8 +606,7 @@ int ThreadRest::BuildDiagnosticsJson(char* buffer, size_t bufferSize) const {
                  GetMatterBridge()->Commissioned() ? "true" : "false", GetMatterBridge()->FabricCount(),
                  GetMatterBridge()->ThreadAttached() ? "true" : "false", lightWeight, soundWeight,
                  config.minBrightness, config.maxBrightness, config.minCCTMireds, config.maxCCTMireds,
-                 config.fanMaxPercent, config.occupancyTimeoutMs,
-                 config.profileConfigured ? "true" : "false");
+                 config.fanMaxPercent, config.occupancyTimeoutMs, config.profileConfigured ? "true" : "false");
 
     return (written < 0 || static_cast<size_t>(written) >= bufferSize) ? -ENOMEM : 0;
 }

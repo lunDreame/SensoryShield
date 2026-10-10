@@ -10,8 +10,8 @@
 LOG_MODULE_REGISTER(illuminance_device, LOG_LEVEL_INF);
 
 namespace {
-constexpr float kLuxPublishDelta = 10.0f;
-constexpr int64_t kLuxPublishMinIntervalMs = 5000;
+constexpr float kLuxPublishDelta = 1.0f;
+constexpr int64_t kLuxPublishMinIntervalMs = 1000;
 } // namespace
 
 IlluminanceDevice::IlluminanceDevice() : Device(4) {}

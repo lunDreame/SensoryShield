@@ -6,7 +6,7 @@ class PIR final {
   public:
     static PIR& Instance();
 
-    int Initialize(uint32_t occupancyTimeoutMs);
+    int Initialize();
     void Poll();
     bool IsOccupied() const {
         return mOccupied;
@@ -25,7 +25,6 @@ class PIR final {
     PIR() = default;
     ~PIR() = default;
 
-    uint32_t mOccupancyTimeoutMs = 0;
     uint32_t mLastMotionMs = 0;
     bool mOccupied = false;
     bool mHealthy = false;

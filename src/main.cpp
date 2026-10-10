@@ -1,5 +1,6 @@
 #include <zephyr/logging/log.h>
 
+#include "system/matter_bridge.h"
 #include "system/system.h"
 
 LOG_MODULE_REGISTER(app, CONFIG_CHIP_APP_LOG_LEVEL);
@@ -12,5 +13,7 @@ int main() {
     }
 
     LOG_INF("System ready");
-    return 0;
+    while (true) {
+        GetMatterBridge()->Dispatch();
+    }
 }

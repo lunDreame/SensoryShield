@@ -18,8 +18,7 @@ PIR& PIR::Instance() {
     return instance;
 }
 
-int PIR::Initialize(uint32_t occupancyTimeoutMs) {
-    mOccupancyTimeoutMs = occupancyTimeoutMs;
+int PIR::Initialize() {
 #if DT_NODE_HAS_STATUS(DT_ALIAS(pir), okay)
     if (!gpio_is_ready_dt(&pirSpec)) {
         LOG_ERR("GPIO not ready");
@@ -63,7 +62,7 @@ void PIR::Poll() {
         return;
     }
 
-    if (mOccupied && (now - mLastMotionMs) >= mOccupancyTimeoutMs) {
+    if (mOccupied) {
         mOccupied = false;
         LOG_INF("Occupancy changed: clear");
     }

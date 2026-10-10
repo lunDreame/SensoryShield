@@ -28,6 +28,8 @@ class LightDevice final : public Device {
     int ApplyTarget(bool on, uint8_t brightnessPercent, uint16_t cctMireds);
     int ApplyTarget(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red, uint8_t green,
                     uint8_t blue);
+    int ApplyTargetNoMatter(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
+                            uint8_t green, uint8_t blue);
     LightState CurrentState() const {
         return mCurrentState;
     }
@@ -40,6 +42,8 @@ class LightDevice final : public Device {
     ~LightDevice() override = default;
 
     uint8_t MiredsToCoolPercent(uint16_t mireds) const;
+    int ApplyTargetInternal(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
+                            uint8_t green, uint8_t blue, bool publishMatter);
 
     LightState mCurrentState = {};
     LightState mPreviousPublished = {};

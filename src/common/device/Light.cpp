@@ -50,7 +50,7 @@ int LightDevice::UpdateToMatter(bool force) {
 
     mPreviousPublished = mCurrentState;
     ClearMatterDirty();
-    LOG_INF("Light changed: on=%d brightness=%u cct=%u rgb=%d (%u,%u,%u)", mCurrentState.on,
+    LOG_DBG("Light changed: on=%d brightness=%u cct=%u rgb=%d (%u,%u,%u)", mCurrentState.on,
             mCurrentState.brightnessPercent, mCurrentState.cctMireds, mCurrentState.rgbMode, mCurrentState.red,
             mCurrentState.green, mCurrentState.blue);
     return 0;
@@ -92,6 +92,16 @@ int LightDevice::ApplyTarget(bool on, uint8_t brightnessPercent, uint16_t cctMir
 
 int LightDevice::ApplyTarget(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
                              uint8_t green, uint8_t blue) {
+    return ApplyTargetInternal(on, brightnessPercent, cctMireds, rgbMode, red, green, blue, true);
+}
+
+int LightDevice::ApplyTargetNoMatter(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
+                                     uint8_t green, uint8_t blue) {
+    return ApplyTargetInternal(on, brightnessPercent, cctMireds, rgbMode, red, green, blue, false);
+}
+
+int LightDevice::ApplyTargetInternal(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
+                                     uint8_t green, uint8_t blue, bool publishMatter) {
     const AppConfig config = GetMemory()->Config();
     uint8_t targetBrightness = on ? ClampValue<uint8_t>(brightnessPercent, 0, 100) : 0;
     if (on && targetBrightness == 0U) {
@@ -122,7 +132,7 @@ int LightDevice::ApplyTarget(bool on, uint8_t brightnessPercent, uint16_t cctMir
     }
     mCurrentState = next;
     MarkMatterDirty();
-    return UpdateToMatter();
+    return publishMatter ? UpdateToMatter() : 0;
 }
 
 uint8_t LightDevice::MiredsToCoolPercent(uint16_t mireds) const {

@@ -57,10 +57,10 @@ class System final {
     int InitializeRootNode();
     int InitializeAggregator();
     int RestoreChildDevices();
+    int RestoreRuntimeState();
     int StartMatterServer();
     int InitializeWorks();
     int InitializeResetButton();
-    int StartMatterDispatch();
     void FactoryResetButtonWork();
     void SensorWork();
     void AlgorithmWork();
@@ -70,6 +70,7 @@ class System final {
     void SetSafeState();
     void OnModeChanged(ControlMode previous, ControlMode current);
     void SyncAppliedTargetFromDevices(ControlTarget& target);
+    void PersistRuntimeState(ControlMode mode, const ControlTarget& target);
 
     static void SensorWorkHandler(struct k_work* work);
     static void AlgorithmWorkHandler(struct k_work* work);
@@ -77,7 +78,6 @@ class System final {
     static void FactoryResetButtonWorkHandler(struct k_work* work);
     static void FactoryResetButtonCallback(const struct device* port, struct gpio_callback* callback,
                                            gpio_port_pins_t pins);
-    static void MatterDispatchThread(void* first, void* second, void* third);
 
     struct k_work_delayable mSensorWork;
     struct k_work_delayable mAlgorithmWork;
@@ -92,7 +92,6 @@ class System final {
     ControlMode mMode = ControlMode::Auto;
     int64_t mOverrideDeadlineMs = 0;
     bool mReady = false;
-    bool mMatterDispatchStarted = false;
     bool mFactoryResetRequested = false;
     bool mMatterChildEnabled[4] = {true, true, true, true};
 };

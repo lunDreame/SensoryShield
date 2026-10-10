@@ -48,7 +48,7 @@ int FanDevice::UpdateToMatter(bool force) {
 
     mPreviousPublished = mCurrentState;
     ClearMatterDirty();
-    LOG_INF("Fan changed: on=%d speed=%u", mCurrentState.on, mCurrentState.speedPercent);
+    LOG_DBG("Fan changed: on=%d speed=%u", mCurrentState.on, mCurrentState.speedPercent);
     return 0;
 }
 
@@ -64,8 +64,20 @@ int FanDevice::ApplyCommand(const DeviceCommand& command) {
 }
 
 int FanDevice::ApplyTarget(bool on, uint8_t speedPercent) {
+    return ApplyTargetInternal(on, speedPercent, true);
+}
+
+int FanDevice::ApplyTargetNoMatter(bool on, uint8_t speedPercent) {
+    return ApplyTargetInternal(on, speedPercent, false);
+}
+
+int FanDevice::ApplyTargetInternal(bool on, uint8_t speedPercent, bool publishMatter) {
     const uint8_t maxPercent = GetMemory()->Config().fanMaxPercent;
-    const FanState next = {on, static_cast<uint8_t>(on ? ClampValue<uint8_t>(speedPercent, 0, maxPercent) : 0)};
+    uint8_t targetPercent = on ? ClampValue<uint8_t>(speedPercent, 0, maxPercent) : 0;
+    if (on && targetPercent == 0U) {
+        targetPercent = maxPercent > 0U ? maxPercent : 100U;
+    }
+    const FanState next = {on, targetPercent};
 
     if (!HasChanged(mCurrentState, next)) {
         return 0;
@@ -78,5 +90,5 @@ int FanDevice::ApplyTarget(bool on, uint8_t speedPercent) {
 
     mCurrentState = next;
     MarkMatterDirty();
-    return UpdateToMatter();
+    return publishMatter ? UpdateToMatter() : 0;
 }

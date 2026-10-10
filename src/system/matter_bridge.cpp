@@ -10,6 +10,8 @@
 
 #include <app-common/zap-generated/ids/Attributes.h>
 #include <app-common/zap-generated/ids/Clusters.h>
+#include <app/CommandHandlerInterface.h>
+#include <app/CommandHandlerInterfaceRegistry.h>
 #include <app/ConcreteAttributePath.h>
 #include <app/matter_event_handler.h>
 #include <app/matter_init.h>
@@ -48,27 +50,53 @@ constexpr AttributeId kClusterRevisionAttributeId = 0x0000FFFD;
 constexpr uint16_t kDescriptorAttributeArraySize = 254;
 constexpr uint16_t kNodeLabelSize = 32;
 constexpr uint16_t kUniqueIdSize = 32;
+constexpr uint16_t kVendorNameSize = 32;
+constexpr uint16_t kProductNameSize = 32;
+constexpr uint16_t kVersionStringSize = 64;
 constexpr uint8_t kDynamicEndpointCount = CHIP_DEVICE_CONFIG_DYNAMIC_ENDPOINT_COUNT;
+constexpr uint32_t kOnOffFeatureLighting = 0x0001;
+constexpr uint32_t kLevelFeatureOnOff = 0x0001;
+constexpr uint32_t kLevelFeatureLighting = 0x0002;
 constexpr uint16_t kColorFeatureHueSaturation = 0x0001;
 constexpr uint16_t kColorFeatureColorTemperature = 0x0010;
-
+constexpr uint32_t kFanFeatureMultiSpeed = 0x0001;
 constexpr uint16_t kDeviceTypeAggregator = 0x000E;
 constexpr uint16_t kDeviceTypeBridgedNode = 0x0013;
 constexpr uint16_t kDeviceTypeFan = 0x002B;
 constexpr uint16_t kDeviceTypeIlluminance = 0x0106;
 constexpr uint16_t kDeviceTypeOccupancy = 0x0107;
-constexpr uint16_t kDeviceTypeColorTemperatureLight = 0x010C;
+constexpr uint16_t kDeviceTypeExtendedColorLight = 0x010D;
 
 EndpointId gCurrentDynamicEndpoint = 0;
 EndpointId gFirstDynamicEndpoint = 0;
 Device* gDynamicDevices[kDynamicEndpointCount] = {};
+bool gOnOffGlobalSceneControl = true;
+uint16_t gOnOffOnTime = 0;
+uint16_t gOnOffOffWaitTime = 0;
+uint8_t gOnOffStartUpOnOff = 0xFF;
+uint8_t gLevelOptions = 0;
+uint8_t gLevelOnLevel = 0xFF;
+uint8_t gLevelStartUpCurrentLevel = 0xFF;
 
 uint8_t PercentToMatterLevel(uint8_t percent) {
-    return static_cast<uint8_t>(1U + (static_cast<uint16_t>(percent) * 253U) / 100U);
+    if (percent == 0U) {
+        return 1;
+    }
+    return static_cast<uint8_t>(1U + ((static_cast<uint16_t>(percent) * 253U) + 50U) / 100U);
 }
 
 uint8_t MatterLevelToPercent(uint8_t level) {
-    return static_cast<uint8_t>((static_cast<uint16_t>(level > 254U ? 254U : level) * 100U) / 254U);
+    if (level == 0U) {
+        return 0;
+    }
+    return static_cast<uint8_t>(((static_cast<uint16_t>(level > 254U ? 254U : level) * 100U) + 253U) / 254U);
+}
+
+uint8_t OnLevelPercentOrDefault(uint8_t defaultPercent) {
+    if (gLevelOnLevel == 0xFFU) {
+        return defaultPercent;
+    }
+    return MatterLevelToPercent(gLevelOnLevel);
 }
 
 uint16_t LuxToMatterIlluminance(float lux) {
@@ -237,7 +265,17 @@ DECLARE_DYNAMIC_ATTRIBUTE(Descriptor::Attributes::DeviceTypeList::Id, ARRAY, kDe
     DECLARE_DYNAMIC_ATTRIBUTE_LIST_END();
 
 DECLARE_DYNAMIC_ATTRIBUTE_LIST_BEGIN(bridgedBasicAttrs)
-DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::NodeLabel::Id, CHAR_STRING, kNodeLabelSize, 0),
+DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::VendorName::Id, CHAR_STRING, kVendorNameSize, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::VendorID::Id, VENDOR_ID, 2, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::ProductName::Id, CHAR_STRING, kProductNameSize,
+                              0),
+    DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::NodeLabel::Id, CHAR_STRING, kNodeLabelSize, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::HardwareVersion::Id, INT16U, 2, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::HardwareVersionString::Id, CHAR_STRING,
+                              kVersionStringSize, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::SoftwareVersion::Id, INT32U, 4, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::SoftwareVersionString::Id, CHAR_STRING,
+                              kVersionStringSize, 0),
     DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::Reachable::Id, BOOLEAN, 1, 0),
     DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::UniqueID::Id, CHAR_STRING, kUniqueIdSize, 0),
     DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::ConfigurationVersion::Id, INT32U, 4, 0),
@@ -246,11 +284,24 @@ DECLARE_DYNAMIC_ATTRIBUTE(BridgedDeviceBasicInformation::Attributes::NodeLabel::
 
 DECLARE_DYNAMIC_ATTRIBUTE_LIST_BEGIN(onOffAttrs)
 DECLARE_DYNAMIC_ATTRIBUTE(OnOff::Attributes::OnOff::Id, BOOLEAN, 1, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(OnOff::Attributes::GlobalSceneControl::Id, BOOLEAN, 1, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(OnOff::Attributes::OnTime::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(OnOff::Attributes::OffWaitTime::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(OnOff::Attributes::StartUpOnOff::Id, ENUM8, 1,
+                              ZAP_ATTRIBUTE_MASK(WRITABLE) | ZAP_ATTRIBUTE_MASK(NULLABLE)),
     DECLARE_DYNAMIC_ATTRIBUTE(OnOff::Attributes::FeatureMap::Id, BITMAP32, 4, 0),
     DECLARE_DYNAMIC_ATTRIBUTE_LIST_END();
 
 DECLARE_DYNAMIC_ATTRIBUTE_LIST_BEGIN(levelControlAttrs)
-DECLARE_DYNAMIC_ATTRIBUTE(LevelControl::Attributes::CurrentLevel::Id, INT8U, 1, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+DECLARE_DYNAMIC_ATTRIBUTE(LevelControl::Attributes::CurrentLevel::Id, INT8U, 1, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(LevelControl::Attributes::RemainingTime::Id, INT16U, 2, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(LevelControl::Attributes::MinLevel::Id, INT8U, 1, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(LevelControl::Attributes::MaxLevel::Id, INT8U, 1, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(LevelControl::Attributes::Options::Id, BITMAP8, 1, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(LevelControl::Attributes::OnLevel::Id, INT8U, 1,
+                              ZAP_ATTRIBUTE_MASK(WRITABLE) | ZAP_ATTRIBUTE_MASK(NULLABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(LevelControl::Attributes::StartUpCurrentLevel::Id, INT8U, 1,
+                              ZAP_ATTRIBUTE_MASK(WRITABLE) | ZAP_ATTRIBUTE_MASK(NULLABLE)),
     DECLARE_DYNAMIC_ATTRIBUTE(LevelControl::Attributes::FeatureMap::Id, BITMAP32, 4, 0),
     DECLARE_DYNAMIC_ATTRIBUTE_LIST_END();
 
@@ -259,6 +310,24 @@ DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::CurrentHue::Id, INT8U, 1, 0)
     DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::CurrentSaturation::Id, INT8U, 1, 0),
     DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorTemperatureMireds::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(WRITABLE)),
     DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorMode::Id, ENUM8, 1, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::Options::Id, BITMAP8, 1, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::NumberOfPrimaries::Id, INT8U, 1,
+                              ZAP_ATTRIBUTE_MASK(NULLABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::Primary1X::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(NULLABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::Primary1Y::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(NULLABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::Primary2X::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(NULLABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::Primary2Y::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(NULLABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::Primary3X::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(NULLABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::Primary3Y::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(NULLABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::WhitePointX::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::WhitePointY::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorPointRX::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorPointRY::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorPointGX::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorPointGY::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorPointBX::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorPointBY::Id, INT16U, 2, ZAP_ATTRIBUTE_MASK(WRITABLE)),
+    DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::EnhancedCurrentHue::Id, INT16U, 2, 0),
     DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::EnhancedColorMode::Id, ENUM8, 1, 0),
     DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorCapabilities::Id, BITMAP16, 2, 0),
     DECLARE_DYNAMIC_ATTRIBUTE(ColorControl::Attributes::ColorTempPhysicalMinMireds::Id, INT16U, 2, 0),
@@ -276,6 +345,8 @@ DECLARE_DYNAMIC_ATTRIBUTE(FanControl::Attributes::FanMode::Id, ENUM8, 1, ZAP_ATT
     DECLARE_DYNAMIC_ATTRIBUTE(FanControl::Attributes::SpeedSetting::Id, INT8U, 1,
                               ZAP_ATTRIBUTE_MASK(WRITABLE) | ZAP_ATTRIBUTE_MASK(NULLABLE)),
     DECLARE_DYNAMIC_ATTRIBUTE(FanControl::Attributes::SpeedCurrent::Id, INT8U, 1, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(FanControl::Attributes::RockSupport::Id, BITMAP8, 1, 0),
+    DECLARE_DYNAMIC_ATTRIBUTE(FanControl::Attributes::WindSupport::Id, BITMAP8, 1, 0),
     DECLARE_DYNAMIC_ATTRIBUTE(FanControl::Attributes::FeatureMap::Id, BITMAP32, 4, 0),
     DECLARE_DYNAMIC_ATTRIBUTE_LIST_END();
 
@@ -300,11 +371,19 @@ DECLARE_DYNAMIC_ATTRIBUTE(IlluminanceMeasurement::Attributes::MeasuredValue::Id,
 constexpr CommandId onOffCommands[] = {OnOff::Commands::Off::Id, OnOff::Commands::On::Id,
                                        OnOff::Commands::Toggle::Id, kInvalidCommandId};
 constexpr CommandId levelControlCommands[] = {LevelControl::Commands::MoveToLevel::Id,
-                                             LevelControl::Commands::MoveToLevelWithOnOff::Id, kInvalidCommandId};
+                                             LevelControl::Commands::Move::Id,
+                                             LevelControl::Commands::Step::Id,
+                                             LevelControl::Commands::Stop::Id,
+                                             LevelControl::Commands::MoveToLevelWithOnOff::Id,
+                                             LevelControl::Commands::MoveWithOnOff::Id,
+                                             LevelControl::Commands::StepWithOnOff::Id,
+                                             LevelControl::Commands::StopWithOnOff::Id,
+                                             kInvalidCommandId};
 constexpr CommandId colorControlCommands[] = {ColorControl::Commands::MoveToHue::Id,
                                               ColorControl::Commands::MoveToSaturation::Id,
                                               ColorControl::Commands::MoveToHueAndSaturation::Id,
                                               ColorControl::Commands::MoveToColorTemperature::Id, kInvalidCommandId};
+constexpr CommandId fanControlCommands[] = {FanControl::Commands::Step::Id, kInvalidCommandId};
 
 DECLARE_DYNAMIC_CLUSTER_LIST_BEGIN(lightClusters)
 DECLARE_DYNAMIC_CLUSTER(OnOff::Id, onOffAttrs, ZAP_CLUSTER_MASK(SERVER), onOffCommands, nullptr),
@@ -318,7 +397,7 @@ DECLARE_DYNAMIC_CLUSTER(OnOff::Id, onOffAttrs, ZAP_CLUSTER_MASK(SERVER), onOffCo
 
 DECLARE_DYNAMIC_CLUSTER_LIST_BEGIN(fanClusters)
 DECLARE_DYNAMIC_CLUSTER(OnOff::Id, onOffAttrs, ZAP_CLUSTER_MASK(SERVER), onOffCommands, nullptr),
-    DECLARE_DYNAMIC_CLUSTER(FanControl::Id, fanControlAttrs, ZAP_CLUSTER_MASK(SERVER), nullptr, nullptr),
+    DECLARE_DYNAMIC_CLUSTER(FanControl::Id, fanControlAttrs, ZAP_CLUSTER_MASK(SERVER), fanControlCommands, nullptr),
     DECLARE_DYNAMIC_CLUSTER(Descriptor::Id, descriptorAttrs, ZAP_CLUSTER_MASK(SERVER), nullptr, nullptr),
     DECLARE_DYNAMIC_CLUSTER(BridgedDeviceBasicInformation::Id, bridgedBasicAttrs, ZAP_CLUSTER_MASK(SERVER), nullptr,
                             nullptr) DECLARE_DYNAMIC_CLUSTER_LIST_END;
@@ -347,7 +426,7 @@ DataVersion occupancyDataVersions[MATTER_ARRAY_SIZE(occupancyClusters)];
 DataVersion illuminanceDataVersions[MATTER_ARRAY_SIZE(illuminanceClusters)];
 
 const EmberAfDeviceType aggregatorDeviceTypes[] = {{kDeviceTypeAggregator, 2}};
-const EmberAfDeviceType lightDeviceTypes[] = {{kDeviceTypeColorTemperatureLight, 3}, {kDeviceTypeBridgedNode, 2}};
+const EmberAfDeviceType lightDeviceTypes[] = {{kDeviceTypeExtendedColorLight, 3}, {kDeviceTypeBridgedNode, 2}};
 const EmberAfDeviceType fanDeviceTypes[] = {{kDeviceTypeFan, 1}, {kDeviceTypeBridgedNode, 2}};
 const EmberAfDeviceType occupancyDeviceTypes[] = {{kDeviceTypeOccupancy, 3}, {kDeviceTypeBridgedNode, 2}};
 const EmberAfDeviceType illuminanceDeviceTypes[] = {{kDeviceTypeIlluminance, 3}, {kDeviceTypeBridgedNode, 2}};
@@ -377,6 +456,7 @@ int RegisterDynamicEndpoint(Device& device, EmberAfEndpointType& endpointType,
                 if (endpoint >= gCurrentDynamicEndpoint) {
                     gCurrentDynamicEndpoint = static_cast<EndpointId>(endpoint + 1U);
                 }
+                Nrf::PostTask([endpoint] { MatterReportingAttributeChangeCallback(endpoint); });
                 return 0;
             }
             if (err != CHIP_ERROR_ENDPOINT_EXISTS) {
@@ -400,6 +480,22 @@ void ReportAttribute(EndpointId endpoint, ClusterId cluster, AttributeId attribu
 
 Protocols::InteractionModel::Status ReadBridgedBasic(Device& device, AttributeId attributeId, uint8_t* buffer,
                                                      uint16_t maxReadLength) {
+    if (attributeId == BridgedDeviceBasicInformation::Attributes::VendorName::Id && maxReadLength >= kVendorNameSize) {
+        MutableByteSpan value(buffer, maxReadLength);
+        return MakeZclCharString(value, "SenseGuard") == CHIP_NO_ERROR
+                   ? Protocols::InteractionModel::Status::Success
+                   : Protocols::InteractionModel::Status::Failure;
+    }
+    if (attributeId == BridgedDeviceBasicInformation::Attributes::VendorID::Id && maxReadLength >= sizeof(uint16_t)) {
+        PutU16(buffer, CONFIG_CHIP_DEVICE_VENDOR_ID);
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == BridgedDeviceBasicInformation::Attributes::ProductName::Id && maxReadLength >= kProductNameSize) {
+        MutableByteSpan value(buffer, maxReadLength);
+        return MakeZclCharString(value, DeviceLabel(device)) == CHIP_NO_ERROR
+                   ? Protocols::InteractionModel::Status::Success
+                   : Protocols::InteractionModel::Status::Failure;
+    }
     if (attributeId == BridgedDeviceBasicInformation::Attributes::Reachable::Id && maxReadLength >= 1) {
         *buffer = 1;
         return Protocols::InteractionModel::Status::Success;
@@ -407,6 +503,30 @@ Protocols::InteractionModel::Status ReadBridgedBasic(Device& device, AttributeId
     if (attributeId == BridgedDeviceBasicInformation::Attributes::NodeLabel::Id && maxReadLength >= kNodeLabelSize) {
         MutableByteSpan label(buffer, maxReadLength);
         return MakeZclCharString(label, DeviceLabel(device)) == CHIP_NO_ERROR
+                   ? Protocols::InteractionModel::Status::Success
+                   : Protocols::InteractionModel::Status::Failure;
+    }
+    if (attributeId == BridgedDeviceBasicInformation::Attributes::HardwareVersion::Id &&
+        maxReadLength >= sizeof(uint16_t)) {
+        PutU16(buffer, 1);
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == BridgedDeviceBasicInformation::Attributes::HardwareVersionString::Id &&
+        maxReadLength >= kVersionStringSize) {
+        MutableByteSpan value(buffer, maxReadLength);
+        return MakeZclCharString(value, "1.0") == CHIP_NO_ERROR
+                   ? Protocols::InteractionModel::Status::Success
+                   : Protocols::InteractionModel::Status::Failure;
+    }
+    if (attributeId == BridgedDeviceBasicInformation::Attributes::SoftwareVersion::Id &&
+        maxReadLength >= sizeof(uint32_t)) {
+        PutU32(buffer, 1);
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == BridgedDeviceBasicInformation::Attributes::SoftwareVersionString::Id &&
+        maxReadLength >= kVersionStringSize) {
+        MutableByteSpan value(buffer, maxReadLength);
+        return MakeZclCharString(value, "1.0.0") == CHIP_NO_ERROR
                    ? Protocols::InteractionModel::Status::Success
                    : Protocols::InteractionModel::Status::Failure;
     }
@@ -441,7 +561,24 @@ Protocols::InteractionModel::Status ReadOnOff(Device& device, AttributeId attrib
             return Protocols::InteractionModel::Status::Success;
         }
     }
-    if (ReadFeatureMap(attributeId, buffer, maxReadLength, 0) == Protocols::InteractionModel::Status::Success) {
+    if (attributeId == OnOff::Attributes::GlobalSceneControl::Id && maxReadLength >= 1) {
+        *buffer = gOnOffGlobalSceneControl ? 1 : 0;
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == OnOff::Attributes::OnTime::Id && maxReadLength >= sizeof(uint16_t)) {
+        PutU16(buffer, gOnOffOnTime);
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == OnOff::Attributes::OffWaitTime::Id && maxReadLength >= sizeof(uint16_t)) {
+        PutU16(buffer, gOnOffOffWaitTime);
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == OnOff::Attributes::StartUpOnOff::Id && maxReadLength >= 1) {
+        *buffer = gOnOffStartUpOnOff;
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (ReadFeatureMap(attributeId, buffer, maxReadLength, kOnOffFeatureLighting) ==
+        Protocols::InteractionModel::Status::Success) {
         return Protocols::InteractionModel::Status::Success;
     }
     return ReadClusterRevision(attributeId, buffer, maxReadLength, 4);
@@ -452,7 +589,32 @@ Protocols::InteractionModel::Status ReadLevelControl(AttributeId attributeId, ui
         *buffer = PercentToMatterLevel(LightDevice::Instance().CurrentState().brightnessPercent);
         return Protocols::InteractionModel::Status::Success;
     }
-    if (ReadFeatureMap(attributeId, buffer, maxReadLength, 0) == Protocols::InteractionModel::Status::Success) {
+    if (attributeId == LevelControl::Attributes::RemainingTime::Id && maxReadLength >= sizeof(uint16_t)) {
+        PutU16(buffer, 0);
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == LevelControl::Attributes::MinLevel::Id && maxReadLength >= 1) {
+        *buffer = 1;
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == LevelControl::Attributes::MaxLevel::Id && maxReadLength >= 1) {
+        *buffer = 254;
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == LevelControl::Attributes::Options::Id && maxReadLength >= 1) {
+        *buffer = gLevelOptions;
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == LevelControl::Attributes::OnLevel::Id && maxReadLength >= 1) {
+        *buffer = gLevelOnLevel;
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == LevelControl::Attributes::StartUpCurrentLevel::Id && maxReadLength >= 1) {
+        *buffer = gLevelStartUpCurrentLevel;
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (ReadFeatureMap(attributeId, buffer, maxReadLength, kLevelFeatureOnOff | kLevelFeatureLighting) ==
+        Protocols::InteractionModel::Status::Success) {
         return Protocols::InteractionModel::Status::Success;
     }
     return ReadClusterRevision(attributeId, buffer, maxReadLength, 6);
@@ -479,8 +641,62 @@ Protocols::InteractionModel::Status ReadColorControl(AttributeId attributeId, ui
         *buffer = light.rgbMode ? 0x00 : 0x02;
         return Protocols::InteractionModel::Status::Success;
     }
+    if (attributeId == ColorControl::Attributes::Options::Id && maxReadLength >= 1) {
+        *buffer = 0;
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == ColorControl::Attributes::EnhancedCurrentHue::Id && maxReadLength >= sizeof(uint16_t)) {
+        PutU16(buffer, static_cast<uint16_t>(RgbToMatterHue(light)) << 8U);
+        return Protocols::InteractionModel::Status::Success;
+    }
     if (attributeId == ColorControl::Attributes::ColorCapabilities::Id && maxReadLength >= sizeof(uint16_t)) {
         PutU16(buffer, kColorFeatureHueSaturation | kColorFeatureColorTemperature);
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == ColorControl::Attributes::NumberOfPrimaries::Id && maxReadLength >= 1) {
+        *buffer = 3;
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if ((attributeId == ColorControl::Attributes::Primary1X::Id ||
+         attributeId == ColorControl::Attributes::ColorPointRX::Id) &&
+        maxReadLength >= sizeof(uint16_t)) {
+        PutU16(buffer, 0xB000);
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if ((attributeId == ColorControl::Attributes::Primary1Y::Id ||
+         attributeId == ColorControl::Attributes::ColorPointRY::Id) &&
+        maxReadLength >= sizeof(uint16_t)) {
+        PutU16(buffer, 0x5800);
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if ((attributeId == ColorControl::Attributes::Primary2X::Id ||
+         attributeId == ColorControl::Attributes::ColorPointGX::Id) &&
+        maxReadLength >= sizeof(uint16_t)) {
+        PutU16(buffer, 0x3000);
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if ((attributeId == ColorControl::Attributes::Primary2Y::Id ||
+         attributeId == ColorControl::Attributes::ColorPointGY::Id) &&
+        maxReadLength >= sizeof(uint16_t)) {
+        PutU16(buffer, 0x9900);
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if ((attributeId == ColorControl::Attributes::Primary3X::Id ||
+         attributeId == ColorControl::Attributes::ColorPointBX::Id) &&
+        maxReadLength >= sizeof(uint16_t)) {
+        PutU16(buffer, 0x2600);
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if ((attributeId == ColorControl::Attributes::Primary3Y::Id ||
+         attributeId == ColorControl::Attributes::ColorPointBY::Id) &&
+        maxReadLength >= sizeof(uint16_t)) {
+        PutU16(buffer, 0x0A00);
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if ((attributeId == ColorControl::Attributes::WhitePointX::Id ||
+         attributeId == ColorControl::Attributes::WhitePointY::Id) &&
+        maxReadLength >= sizeof(uint16_t)) {
+        PutU16(buffer, 0x5555);
         return Protocols::InteractionModel::Status::Success;
     }
     if (attributeId == ColorControl::Attributes::ColorTempPhysicalMinMireds::Id && maxReadLength >= sizeof(uint16_t)) {
@@ -501,7 +717,7 @@ Protocols::InteractionModel::Status ReadColorControl(AttributeId attributeId, ui
 Protocols::InteractionModel::Status ReadFanControl(AttributeId attributeId, uint8_t* buffer, uint16_t maxReadLength) {
     const FanState fan = FanDevice::Instance().CurrentState();
     if (attributeId == FanControl::Attributes::FanMode::Id && maxReadLength >= 1) {
-        *buffer = fan.on ? 0x04 : 0x00;
+        *buffer = fan.on ? 0x03 : 0x00;
         return Protocols::InteractionModel::Status::Success;
     }
     if (attributeId == FanControl::Attributes::FanModeSequence::Id && maxReadLength >= 1) {
@@ -518,13 +734,20 @@ Protocols::InteractionModel::Status ReadFanControl(AttributeId attributeId, uint
         *buffer = 100;
         return Protocols::InteractionModel::Status::Success;
     }
+    if ((attributeId == FanControl::Attributes::RockSupport::Id ||
+         attributeId == FanControl::Attributes::WindSupport::Id) &&
+        maxReadLength >= 1) {
+        *buffer = 0;
+        return Protocols::InteractionModel::Status::Success;
+    }
     if ((attributeId == FanControl::Attributes::SpeedSetting::Id ||
          attributeId == FanControl::Attributes::SpeedCurrent::Id) &&
         maxReadLength >= 1) {
         *buffer = fan.speedPercent;
         return Protocols::InteractionModel::Status::Success;
     }
-    if (ReadFeatureMap(attributeId, buffer, maxReadLength, 0) == Protocols::InteractionModel::Status::Success) {
+    if (ReadFeatureMap(attributeId, buffer, maxReadLength, kFanFeatureMultiSpeed) ==
+        Protocols::InteractionModel::Status::Success) {
         return Protocols::InteractionModel::Status::Success;
     }
     return ReadClusterRevision(attributeId, buffer, maxReadLength, 4);
@@ -607,32 +830,192 @@ Protocols::InteractionModel::Status ReadThreadNetworkDiagnostics(AttributeId att
     return Protocols::InteractionModel::Status::Failure;
 }
 
-Protocols::InteractionModel::Status ApplyOnOffWrite(Device& device, uint8_t* buffer) {
+Protocols::InteractionModel::Status ApplyOnOffWrite(Device& device, AttributeId attributeId, uint8_t* buffer) {
+    if (attributeId == OnOff::Attributes::OnTime::Id) {
+        memcpy(&gOnOffOnTime, buffer, sizeof(gOnOffOnTime));
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == OnOff::Attributes::OffWaitTime::Id) {
+        memcpy(&gOnOffOffWaitTime, buffer, sizeof(gOnOffOffWaitTime));
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == OnOff::Attributes::StartUpOnOff::Id) {
+        gOnOffStartUpOnOff = *buffer;
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId != OnOff::Attributes::OnOff::Id) {
+        return Protocols::InteractionModel::Status::UnsupportedWrite;
+    }
+
     const bool on = *buffer != 0;
     if (device.LogicalId() == LightDevice::Instance().LogicalId()) {
         const LightState current = LightDevice::Instance().CurrentState();
-        return GetSystem()->SetManualLight(on, current.brightnessPercent, current.cctMireds, current.rgbMode,
-                                           current.red, current.green, current.blue) == 0
-                   ? Protocols::InteractionModel::Status::Success
-                   : Protocols::InteractionModel::Status::Failure;
+        const uint8_t brightness =
+            on ? OnLevelPercentOrDefault(current.brightnessPercent > 0U ? current.brightnessPercent : 50U) : 0U;
+        const int ret = GetSystem()->SetManualLight(on, brightness, current.cctMireds, current.rgbMode,
+                                                    current.red, current.green, current.blue);
+        return ret == 0 ? Protocols::InteractionModel::Status::Success : Protocols::InteractionModel::Status::Failure;
     }
     if (device.LogicalId() == FanDevice::Instance().LogicalId()) {
         const FanState current = FanDevice::Instance().CurrentState();
-        return GetSystem()->SetManualFan(on, on ? current.speedPercent : 0) == 0
-                   ? Protocols::InteractionModel::Status::Success
-                   : Protocols::InteractionModel::Status::Failure;
+        const uint8_t percent = on && current.speedPercent == 0U ? GetMemory()->Config().fanMaxPercent
+                                                                 : current.speedPercent;
+        const int ret = GetSystem()->SetManualFan(on, on ? percent : 0);
+        return ret == 0 ? Protocols::InteractionModel::Status::Success : Protocols::InteractionModel::Status::Failure;
     }
     return Protocols::InteractionModel::Status::Failure;
 }
 
-Protocols::InteractionModel::Status ApplyLevelWrite(uint8_t* buffer) {
+Protocols::InteractionModel::Status ApplyLevelWrite(AttributeId attributeId, uint8_t* buffer) {
+    if (attributeId == LevelControl::Attributes::Options::Id) {
+        gLevelOptions = *buffer;
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == LevelControl::Attributes::OnLevel::Id) {
+        gLevelOnLevel = *buffer;
+        if (gLevelOnLevel != 0xFFU && LightDevice::Instance().CurrentState().on) {
+            const LightState current = LightDevice::Instance().CurrentState();
+            const uint8_t percent = MatterLevelToPercent(gLevelOnLevel);
+            const int ret = GetSystem()->SetManualLight(percent > 0U, percent, current.cctMireds, current.rgbMode,
+                                                        current.red, current.green, current.blue);
+            return ret == 0 ? Protocols::InteractionModel::Status::Success
+                            : Protocols::InteractionModel::Status::Failure;
+        }
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId == LevelControl::Attributes::StartUpCurrentLevel::Id) {
+        gLevelStartUpCurrentLevel = *buffer;
+        return Protocols::InteractionModel::Status::Success;
+    }
+    if (attributeId != LevelControl::Attributes::CurrentLevel::Id) {
+        return Protocols::InteractionModel::Status::UnsupportedWrite;
+    }
+
+    if (*buffer == 0U) {
+        return Protocols::InteractionModel::Status::Success;
+    }
+
     const LightState current = LightDevice::Instance().CurrentState();
     const uint8_t percent = MatterLevelToPercent(*buffer);
-    return GetSystem()->SetManualLight(percent > 0U, percent, current.cctMireds, current.rgbMode, current.red,
-                                       current.green, current.blue) == 0
-               ? Protocols::InteractionModel::Status::Success
-               : Protocols::InteractionModel::Status::Failure;
+    if (!current.on) {
+        gLevelOnLevel = *buffer;
+        return Protocols::InteractionModel::Status::Success;
+    }
+
+    const int ret = GetSystem()->SetManualLight(percent > 0U, percent, current.cctMireds, current.rgbMode, current.red,
+                                                current.green, current.blue);
+    return ret == 0 ? Protocols::InteractionModel::Status::Success : Protocols::InteractionModel::Status::Failure;
 }
+
+Protocols::InteractionModel::Status ApplyLevelCommand(EndpointId endpoint, uint8_t percent, bool withOnOff,
+                                                      const char* commandName) {
+    Device* device = DeviceFromEndpoint(endpoint);
+    if (device == nullptr || device->LogicalId() != LightDevice::Instance().LogicalId()) {
+        LOG_WRN("Matter Level command: endpoint=%u command=%s has no mapped light", endpoint, commandName);
+        return Protocols::InteractionModel::Status::Failure;
+    }
+
+    const LightState current = LightDevice::Instance().CurrentState();
+    if (!current.on && !withOnOff) {
+        gLevelOnLevel = PercentToMatterLevel(percent);
+        return Protocols::InteractionModel::Status::Success;
+    }
+
+    const bool on = percent > 0U;
+    const int ret = GetSystem()->SetManualLight(on, percent, current.cctMireds, current.rgbMode, current.red,
+                                                current.green, current.blue);
+    if (ret == 0) {
+        ReportAttribute(endpoint, LevelControl::Id, LevelControl::Attributes::CurrentLevel::Id);
+    }
+    return ret == 0 ? Protocols::InteractionModel::Status::Success : Protocols::InteractionModel::Status::Failure;
+}
+
+class LightLevelCommandHandler : public CommandHandlerInterface {
+public:
+    LightLevelCommandHandler() : CommandHandlerInterface(Optional<EndpointId>::Missing(), LevelControl::Id) {}
+
+    void InvokeCommand(HandlerContext& handlerContext) override {
+        Device* device = DeviceFromEndpoint(handlerContext.mRequestPath.mEndpointId);
+        if (device == nullptr || device->LogicalId() != LightDevice::Instance().LogicalId()) {
+            handlerContext.SetCommandNotHandled();
+            return;
+        }
+
+        HandleCommand<LevelControl::Commands::MoveToLevel::DecodableType>(
+            handlerContext, [](HandlerContext& context, const LevelControl::Commands::MoveToLevel::DecodableType& commandData) {
+                AddLevelStatus(context, MatterLevelToPercent(commandData.level), false, "MoveToLevel");
+            });
+        HandleCommand<LevelControl::Commands::MoveToLevelWithOnOff::DecodableType>(
+            handlerContext,
+            [](HandlerContext& context, const LevelControl::Commands::MoveToLevelWithOnOff::DecodableType& commandData) {
+                AddLevelStatus(context, MatterLevelToPercent(commandData.level), true, "MoveToLevelWithOnOff");
+            });
+        HandleCommand<LevelControl::Commands::Step::DecodableType>(
+            handlerContext, [](HandlerContext& context, const LevelControl::Commands::Step::DecodableType& commandData) {
+                HandleStep(context, commandData.stepMode, commandData.stepSize, false, "Step");
+            });
+        HandleCommand<LevelControl::Commands::StepWithOnOff::DecodableType>(
+            handlerContext,
+            [](HandlerContext& context, const LevelControl::Commands::StepWithOnOff::DecodableType& commandData) {
+                HandleStep(context, commandData.stepMode, commandData.stepSize, true, "StepWithOnOff");
+            });
+        HandleCommand<LevelControl::Commands::Move::DecodableType>(
+            handlerContext, [](HandlerContext& context, const LevelControl::Commands::Move::DecodableType& commandData) {
+                HandleMove(context, commandData.moveMode, false, "Move");
+            });
+        HandleCommand<LevelControl::Commands::MoveWithOnOff::DecodableType>(
+            handlerContext, [](HandlerContext& context, const LevelControl::Commands::MoveWithOnOff::DecodableType& commandData) {
+                HandleMove(context, commandData.moveMode, true, "MoveWithOnOff");
+            });
+        HandleCommand<LevelControl::Commands::Stop::DecodableType>(
+            handlerContext, [](HandlerContext& context, const LevelControl::Commands::Stop::DecodableType&) {
+                context.mCommandHandler.AddStatus(context.mRequestPath, Protocols::InteractionModel::Status::Success);
+            });
+        HandleCommand<LevelControl::Commands::StopWithOnOff::DecodableType>(
+            handlerContext, [](HandlerContext& context, const LevelControl::Commands::StopWithOnOff::DecodableType&) {
+                context.mCommandHandler.AddStatus(context.mRequestPath, Protocols::InteractionModel::Status::Success);
+            });
+    }
+
+private:
+    static void AddLevelStatus(HandlerContext& context, uint8_t percent, bool withOnOff, const char* commandName) {
+        context.mCommandHandler.AddStatus(
+            context.mRequestPath, ApplyLevelCommand(context.mRequestPath.mEndpointId, percent, withOnOff, commandName));
+    }
+
+    static void HandleMove(HandlerContext& context, LevelControl::MoveModeEnum moveMode, bool withOnOff,
+                           const char* commandName) {
+        if (moveMode == LevelControl::MoveModeEnum::kUp) {
+            AddLevelStatus(context, 100, withOnOff, commandName);
+            return;
+        }
+        if (moveMode == LevelControl::MoveModeEnum::kDown) {
+            AddLevelStatus(context, 0, withOnOff, commandName);
+            return;
+        }
+        context.mCommandHandler.AddStatus(context.mRequestPath, Protocols::InteractionModel::Status::ConstraintError);
+    }
+
+    static void HandleStep(HandlerContext& context, LevelControl::StepModeEnum stepMode, uint8_t stepSize,
+                           bool withOnOff, const char* commandName) {
+        const uint8_t current = LightDevice::Instance().CurrentState().brightnessPercent;
+        const uint8_t stepPercent = MatterLevelToPercent(stepSize);
+        if (stepMode == LevelControl::StepModeEnum::kUp) {
+            AddLevelStatus(context, static_cast<uint8_t>(current + MIN(stepPercent, 100U - current)), withOnOff,
+                           commandName);
+            return;
+        }
+        if (stepMode == LevelControl::StepModeEnum::kDown) {
+            AddLevelStatus(context, current > stepPercent ? static_cast<uint8_t>(current - stepPercent) : 0, withOnOff,
+                           commandName);
+            return;
+        }
+        context.mCommandHandler.AddStatus(context.mRequestPath, Protocols::InteractionModel::Status::ConstraintError);
+    }
+};
+
+LightLevelCommandHandler gLightLevelCommandHandler;
+bool gLightLevelCommandHandlerRegistered = false;
 
 Protocols::InteractionModel::Status ApplyColorWrite(AttributeId attributeId, uint8_t* buffer) {
     const LightState current = LightDevice::Instance().CurrentState();
@@ -670,6 +1053,9 @@ Protocols::InteractionModel::Status ApplyFanWrite(AttributeId attributeId, uint8
         if (mode == 0x00) {
             return GetSystem()->SetManualFan(false, 0) == 0 ? Protocols::InteractionModel::Status::Success
                                                             : Protocols::InteractionModel::Status::Failure;
+        }
+        if (mode != 0x03 && mode != 0x04) {
+            return Protocols::InteractionModel::Status::ConstraintError;
         }
         const uint8_t percent = FanDevice::Instance().CurrentState().speedPercent > 0U
                                     ? FanDevice::Instance().CurrentState().speedPercent
@@ -752,6 +1138,16 @@ int MatterBridge::Initialize() {
     }
 
     CHIP_ERROR err = Nrf::Matter::PrepareServer(Nrf::Matter::InitData{ .mPostServerInitClbk = []() -> CHIP_ERROR {
+        if (!gLightLevelCommandHandlerRegistered) {
+            CHIP_ERROR handlerErr =
+                CommandHandlerInterfaceRegistry::Instance().RegisterCommandHandler(&gLightLevelCommandHandler);
+            if (handlerErr != CHIP_NO_ERROR) {
+                LOG_ERR("Matter Level command handler registration failed: 0x%08x", handlerErr.AsInteger());
+                return handlerErr;
+            }
+            gLightLevelCommandHandlerRegistered = true;
+        }
+
         const int ret = GetSystem()->RegisterMatterEndpoints();
         if (ret != 0) {
             LOG_ERR("Matter endpoint registration after server init failed: %d", ret);
@@ -1032,10 +1428,10 @@ Protocols::InteractionModel::Status emberAfExternalAttributeWriteCallback(
     }
 
     if (clusterId == OnOff::Id) {
-        return ApplyOnOffWrite(*device, buffer);
+        return ApplyOnOffWrite(*device, attributeMetadata->attributeId, buffer);
     }
     if (clusterId == LevelControl::Id && device->LogicalId() == LightDevice::Instance().LogicalId()) {
-        return ApplyLevelWrite(buffer);
+        return ApplyLevelWrite(attributeMetadata->attributeId, buffer);
     }
     if (clusterId == ColorControl::Id && device->LogicalId() == LightDevice::Instance().LogicalId()) {
         return ApplyColorWrite(attributeMetadata->attributeId, buffer);
@@ -1047,7 +1443,9 @@ Protocols::InteractionModel::Status emberAfExternalAttributeWriteCallback(
     return Protocols::InteractionModel::Status::UnsupportedWrite;
 }
 
-void MatterPostAttributeChangeCallback(const ConcreteAttributePath& path, uint8_t, uint16_t, uint8_t* value) {
+void MatterPostAttributeChangeCallback(const ConcreteAttributePath& path, uint8_t type, uint16_t size, uint8_t* value) {
     ARG_UNUSED(path);
+    ARG_UNUSED(type);
+    ARG_UNUSED(size);
     ARG_UNUSED(value);
 }

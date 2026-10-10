@@ -6,8 +6,8 @@ LightTarget LightPresenceController::Evaluate(const SensorSnapshot& snapshot, co
         return {false, 0, config.maxCCTMireds};
     }
 
-    const float limitedScore = ClampValue(sensoryScore, 0.0f, 8.0f);
-    const float normalized = limitedScore / 8.0f;
+    const float limitedScore = ClampValue(sensoryScore, 0.0f, STIMULUS_MAX_SCORE);
+    const float normalized = limitedScore / STIMULUS_MAX_SCORE;
     const uint8_t brightnessRange = config.maxBrightness - config.minBrightness;
     const uint8_t brightness =
         ClampValue<uint8_t>(static_cast<uint8_t>(config.maxBrightness - (brightnessRange * normalized)),

@@ -29,7 +29,7 @@
         compatible = "gpio-keys";
 
         pir_sensor: pir_sensor {
-            gpios = <&gpio1 10 GPIO_ACTIVE_HIGH>;
+            gpios = <&gpio1 10 (GPIO_ACTIVE_HIGH | GPIO_PULL_DOWN)>;
             label = "HC-SR501 PIR";
         };
     };

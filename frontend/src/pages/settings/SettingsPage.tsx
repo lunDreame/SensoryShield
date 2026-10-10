@@ -7,12 +7,12 @@ import type { AppConfig } from "../../shared/types/domain";
 const initialConfig: AppConfig = {
   lightWeight: 0.55,
   soundWeight: 0.45,
-  minBrightness: 5,
-  maxBrightness: 85,
+  minBrightness: 1,
+  maxBrightness: 100,
   minCCTMireds: 250,
   maxCCTMireds: 454,
-  fanMaxPercent: 80,
-  occupancyTimeoutMs: 300000,
+  fanMaxPercent: 100,
+  occupancyTimeoutMs: 30000,
   profileConfigured: true
 };
 
@@ -25,8 +25,8 @@ const labels: Record<EditableConfigKey, { title: string; unit: string }> = {
   maxBrightness: { title: "가장 높은 자동 밝기", unit: "%" },
   minCCTMireds: { title: "가장 선명한 빛", unit: "K" },
   maxCCTMireds: { title: "가장 따뜻한 빛", unit: "K" },
-  fanMaxPercent: { title: "바람 세기 한도", unit: "%" },
-  occupancyTimeoutMs: { title: "자동 제어 유지 시간", unit: "분" }
+  fanMaxPercent: { title: "최대 바람 세기", unit: "%" },
+  occupancyTimeoutMs: { title: "움직임 후 유지 시간", unit: "초" }
 };
 
 interface SettingsPageProps {
@@ -57,7 +57,7 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
   }, []);
 
   function displayValue(key: EditableConfigKey) {
-    if (key === "occupancyTimeoutMs") return config[key] / 60000;
+    if (key === "occupancyTimeoutMs") return Math.round(config[key] / 1000);
     if (key === "minCCTMireds" || key === "maxCCTMireds") return Math.round(1_000_000 / config[key]);
     if (key === "lightWeight" || key === "soundWeight") return Math.round(config[key] * 100);
     return config[key];
@@ -65,7 +65,7 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
 
   function update(key: EditableConfigKey, value: number) {
     const storedValue = key === "occupancyTimeoutMs"
-      ? value * 60000
+      ? value * 1000
       : key === "minCCTMireds" || key === "maxCCTMireds"
         ? Math.round(1_000_000 / value)
         : key === "lightWeight" || key === "soundWeight"
@@ -109,8 +109,8 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
       setError("밝기와 바람 세기는 0에서 100% 사이로 설정해 주세요.");
       return;
     }
-    if (config.occupancyTimeoutMs < 60000 || config.occupancyTimeoutMs > 86400000) {
-      setError("유지 시간은 1분에서 24시간 사이로 설정해 주세요.");
+    if (config.occupancyTimeoutMs < 1000 || config.occupancyTimeoutMs > 600000) {
+      setError("움직임 후 유지 시간은 1초에서 10분 사이로 설정해 주세요.");
       return;
     }
     if (config.minCCTMireds > config.maxCCTMireds) {
@@ -159,7 +159,7 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
       </section>
       <Panel title="개인 맞춤 기준" subtitle="처음 선택한 빛·소리 민감도와 선호 조명을 다시 설정할 수 있어요."
         action={<button className="button button-weak" type="button" disabled={pending} onClick={() => void restartOnboarding()}>개인 설정 다시 하기</button>}>
-        <p className="profile-setting-note">다시 답하면 새로운 선택이 AUTO 모드의 기본 기준으로 저장됩니다.</p>
+        <p className="profile-setting-note">다시 답하면 새로운 선택이 자동 조절의 기준으로 저장돼요.</p>
       </Panel>
       <Panel title="자동 반응 민감도" subtitle="평소와 다른 빛과 소리를 감지했을 때 조명이 반응하는 정도">
         <div className="settings-grid">
@@ -185,7 +185,7 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
           ))}
         </div>
       </Panel>
-      <Panel title="자동 조명 범위" subtitle="자동 모드가 조절할 수 있는 가장 어두운 값과 가장 밝은 값">
+      <Panel title="자동 조명 범위" subtitle="자동 조절로 사용할 가장 어두운 값과 가장 밝은 값">
         <div className="settings-grid">
           {(["minBrightness", "maxBrightness", "minCCTMireds", "maxCCTMireds"] as EditableConfigKey[]).map((key) => (
             <label className="input-line" key={key}>
@@ -194,12 +194,12 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
                 <input type="number" min={key.includes("Brightness") ? 0 : key.includes("CCT") ? 2203 : 1} max={key.includes("Brightness") ? 100 : key.includes("CCT") ? 4000 : 1000} step={key.includes("CCT") ? 100 : 1} value={inputValue(key)} onChange={(event) => changeInput(key, event.target.value)} />
                 <em>{labels[key].unit}</em>
               </div>
-              {key.includes("CCT") ? <small className="setting-meaning"><b>{describeKelvin(Number(displayValue(key)))}</b> · 숫자가 낮을수록 노란빛, 높을수록 흰빛에 가까워요.</small> : <small className="setting-meaning">AUTO 모드에서도 이 범위를 벗어나지 않아요.</small>}
+              {key.includes("CCT") ? <small className="setting-meaning"><b>{describeKelvin(Number(displayValue(key)))}</b> · 숫자가 낮을수록 노란빛, 높을수록 흰빛에 가까워요.</small> : <small className="setting-meaning">자동 조절 중에도 이 범위를 벗어나지 않아요.</small>}
             </label>
           ))}
         </div>
       </Panel>
-      <Panel title="바람 세기" subtitle="팬 속도의 명령 상한을 설정하세요.">
+      <Panel title="바람 세기" subtitle="사용할 수 있는 가장 센 바람을 정해요.">
         <div className="settings-grid">
           {(["fanMaxPercent"] as EditableConfigKey[]).map((key) => (
             <label className="input-line" key={key}>
@@ -208,20 +208,20 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
                 <input type="number" min={0} max={100} value={inputValue(key)} onChange={(event) => changeInput(key, event.target.value)} />
                 <em>{labels[key].unit}</em>
               </div>
-              <small style={{ color: "var(--body)", lineHeight: 1.6 }}>0%는 자동 팬을 끕니다. 현재 최소 구동 기준은 18%이며, 그보다 낮은 한도에서는 자동 팬이 정지합니다.</small>
+              <small style={{ color: "var(--body)", lineHeight: 1.6 }}>0%는 팬을 끄고, 1~100% 범위에서 원하는 바람 세기를 사용할 수 있어요.</small>
             </label>
           ))}
         </div>
       </Panel>
-      <Panel title="사람이 없을 때" subtitle="마지막 움직임이 감지된 뒤 조명과 팬을 유지하는 시간">
+      <Panel title="사람이 없을 때" subtitle="움직임이 멈춘 뒤 자동 조명과 팬을 유지하는 시간">
         <div className="settings-grid">
           <label className="input-line">
             <span>{labels.occupancyTimeoutMs.title}</span>
             <div className="field-with-unit">
-              <input type="number" min={1} max={1440} value={inputValue("occupancyTimeoutMs")} onChange={(event) => changeInput("occupancyTimeoutMs", event.target.value)} />
+              <input type="number" min={1} max={600} value={inputValue("occupancyTimeoutMs")} onChange={(event) => changeInput("occupancyTimeoutMs", event.target.value)} />
               <em>{labels.occupancyTimeoutMs.unit}</em>
             </div>
-            <small className="setting-meaning">이 시간이 지나면 사람이 없는 것으로 판단해 자동으로 조명과 팬을 정지해요.</small>
+            <small className="setting-meaning">움직임이 사라진 뒤에도 자동 조절 중인 조명과 팬을 이 시간만큼 더 유지해요.</small>
           </label>
         </div>
       </Panel>

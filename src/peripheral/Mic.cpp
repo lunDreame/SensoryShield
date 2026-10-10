@@ -16,8 +16,10 @@ namespace {
 #define MIC_SAMPLES_PER_WINDOW (MIC_SAMPLE_RATE_HZ * MIC_WINDOW_MS / 1000U)
 #define MIC_BLOCK_BYTES (MIC_SAMPLES_PER_WINDOW * sizeof(int16_t))
 #define MIC_BUFFER_COUNT 8U
-#define MIC_READ_TIMEOUT_MS 500
 #define MIC_CAPTURE_STACK_SIZE 3072U
+#define MIC_PDM_CLK_MIN_HZ 1000000U
+#define MIC_PDM_CLK_MAX_HZ 3250000U
+#define MIC_PDM_CHANNEL PDM_CHAN_LEFT
 
 K_MEM_SLAB_DEFINE_STATIC(micBuffers, MIC_BLOCK_BYTES, MIC_BUFFER_COUNT, 4);
 K_THREAD_STACK_DEFINE(micCaptureStack, MIC_CAPTURE_STACK_SIZE);
@@ -26,6 +28,63 @@ struct k_thread micCaptureThread;
 #if DT_NODE_HAS_STATUS(DT_ALIAS(dmic_dev), okay)
 const struct device* const dmicDevice = DEVICE_DT_GET(DT_ALIAS(dmic_dev));
 #endif
+
+void BuildDmicConfig(struct pcm_stream_cfg& stream, struct dmic_cfg& config, enum pdm_lr channel) {
+    stream = {
+        .pcm_rate = MIC_SAMPLE_RATE_HZ,
+        .pcm_width = 16U,
+        .block_size = MIC_BLOCK_BYTES,
+        .mem_slab = &micBuffers,
+    };
+    config = {
+        .io = {
+            .min_pdm_clk_freq = MIC_PDM_CLK_MIN_HZ,
+            .max_pdm_clk_freq = MIC_PDM_CLK_MAX_HZ,
+            .min_pdm_clk_dc = 40U,
+            .max_pdm_clk_dc = 60U,
+        },
+        .streams = &stream,
+        .channel = {
+            .req_chan_map_lo = dmic_build_channel_map(0U, 0U, channel),
+            .req_chan_map_hi = 0U,
+            .req_num_chan = 1U,
+            .req_num_streams = 1U,
+        },
+    };
+}
+
+int ConfigureDmicCapture(enum pdm_lr channel) {
+#if DT_NODE_HAS_STATUS(DT_ALIAS(dmic_dev), okay)
+    struct pcm_stream_cfg stream = {};
+    struct dmic_cfg config = {};
+    BuildDmicConfig(stream, config, channel);
+    return dmic_configure(dmicDevice, &config);
+#else
+    ARG_UNUSED(channel);
+    return -ENODEV;
+#endif
+}
+
+int StartDmicCapture(enum pdm_lr channel) {
+#if DT_NODE_HAS_STATUS(DT_ALIAS(dmic_dev), okay)
+    int ret = ConfigureDmicCapture(channel);
+    if (ret != 0) {
+        LOG_ERR("PDM configure failed: %d", ret);
+        return ret;
+    }
+
+    ret = dmic_trigger(dmicDevice, DMIC_TRIGGER_START);
+    if (ret != 0) {
+        LOG_ERR("PDM start failed: %d", ret);
+        return ret;
+    }
+
+    return 0;
+#else
+    ARG_UNUSED(channel);
+    return -ENODEV;
+#endif
+}
 }  // namespace
 
 Mic& Mic::Instance() {
@@ -44,37 +103,8 @@ int Mic::Initialize() {
         return -ENODEV;
     }
 
-    struct pcm_stream_cfg stream = {
-        .pcm_rate = MIC_SAMPLE_RATE_HZ,
-        .pcm_width = 16U,
-        .block_size = MIC_BLOCK_BYTES,
-        .mem_slab = &micBuffers,
-    };
-    struct dmic_cfg config = {
-        .io = {
-            .min_pdm_clk_freq = 1000000U,
-            .max_pdm_clk_freq = 3500000U,
-            .min_pdm_clk_dc = 40U,
-            .max_pdm_clk_dc = 60U,
-        },
-        .streams = &stream,
-        .channel = {
-            .req_chan_map_lo = dmic_build_channel_map(0U, 0U, PDM_CHAN_LEFT),
-            .req_chan_map_hi = 0U,
-            .req_num_chan = 1U,
-            .req_num_streams = 1U,
-        },
-    };
-
-    int ret = dmic_configure(dmicDevice, &config);
+    const int ret = StartDmicCapture(MIC_PDM_CHANNEL);
     if (ret != 0) {
-        LOG_ERR("PDM configure failed: %d", ret);
-        return ret;
-    }
-
-    ret = dmic_trigger(dmicDevice, DMIC_TRIGGER_START);
-    if (ret != 0) {
-        LOG_ERR("PDM start failed: %d", ret);
         return ret;
     }
 
@@ -111,41 +141,19 @@ void Mic::CaptureThread(void* first, void* second, void* third) {
 
 void Mic::CaptureLoop() {
 #if DT_NODE_HAS_STATUS(DT_ALIAS(dmic_dev), okay)
-    uint32_t consecutiveErrors = 0U;
     while (true) {
         void* buffer = nullptr;
         size_t size = 0U;
-        const int ret = dmic_read(dmicDevice, 0U, &buffer, &size, MIC_READ_TIMEOUT_MS);
+        const int ret = dmic_read(dmicDevice, 0U, &buffer, &size, SYS_FOREVER_MS);
         if (ret != 0) {
-            ++consecutiveErrors;
             k_mutex_lock(&mLock, K_FOREVER);
             mHealthy = false;
             mFeatures.valid = false;
             k_mutex_unlock(&mLock);
-
-            if (ret == -EAGAIN) {
-                if (consecutiveErrors == 1U || (consecutiveErrors % 20U) == 0U) {
-                    LOG_WRN("PDM capture delayed: %d (%u consecutive)", ret, consecutiveErrors);
-                }
-                continue;
-            }
-
-            if (consecutiveErrors == 1U || (consecutiveErrors % 10U) == 0U) {
-                LOG_WRN("PDM read failed: %d (%u consecutive)", ret, consecutiveErrors);
-            }
-
-            if (consecutiveErrors == 1U || (consecutiveErrors % 10U) == 0U) {
-                const int stopRet = dmic_trigger(dmicDevice, DMIC_TRIGGER_STOP);
-                const int startRet = dmic_trigger(dmicDevice, DMIC_TRIGGER_START);
-                if (stopRet != 0 || startRet != 0) {
-                    LOG_ERR("PDM recovery failed: stop=%d start=%d", stopRet, startRet);
-                    k_sleep(K_MSEC(500));
-                }
-            }
+            LOG_ERR("PDM read failed: %d", ret);
             continue;
         }
 
-        consecutiveErrors = 0U;
         if (buffer != nullptr && size >= sizeof(int16_t)) {
             SubmitPcmSamples(static_cast<const int16_t*>(buffer), size / sizeof(int16_t));
         }
