@@ -25,6 +25,7 @@
 #include <platform/CHIPDeviceEvent.h>
 #include <platform/ConfigurationManager.h>
 #include <platform/ThreadStackManager.h>
+#include <openthread/ip6.h>
 #include <openthread/link.h>
 #include <openthread/thread.h>
 #include <openthread.h>
@@ -66,6 +67,8 @@ constexpr uint16_t kDeviceTypeFan = 0x002B;
 constexpr uint16_t kDeviceTypeIlluminance = 0x0106;
 constexpr uint16_t kDeviceTypeOccupancy = 0x0107;
 constexpr uint16_t kDeviceTypeExtendedColorLight = 0x010D;
+constexpr uint8_t kWebUiLogMaxAttempts = 15;
+constexpr uint32_t kWebUiLogRetryDelayMs = 2000;
 
 EndpointId gCurrentDynamicEndpoint = 0;
 EndpointId gFirstDynamicEndpoint = 0;
@@ -77,6 +80,75 @@ uint8_t gOnOffStartUpOnOff = 0xFF;
 uint8_t gLevelOptions = 0;
 uint8_t gLevelOnLevel = 0xFF;
 uint8_t gLevelStartUpCurrentLevel = 0xFF;
+uint8_t gWebUiLogAttempts = 0;
+
+void WebUiLogWorkHandler(struct k_work* work);
+K_WORK_DELAYABLE_DEFINE(gWebUiLogWork, WebUiLogWorkHandler);
+
+bool IsLinkLocalAddress(const otIp6Address& address) {
+    return address.mFields.m8[0] == 0xfe && (address.mFields.m8[1] & 0xc0) == 0x80;
+}
+
+bool HasMeshLocalPrefix(const otIp6Address& address, const otMeshLocalPrefix* meshLocalPrefix) {
+    return meshLocalPrefix != nullptr &&
+           memcmp(address.mFields.m8, meshLocalPrefix->m8, OT_MESH_LOCAL_PREFIX_SIZE) == 0;
+}
+
+bool IsWebUiAddress(const otNetifAddress& address, const otMeshLocalPrefix* meshLocalPrefix) {
+    return address.mValid && address.mPreferred && !address.mRloc && !address.mMeshLocal &&
+           !IsLinkLocalAddress(address.mAddress) && !HasMeshLocalPrefix(address.mAddress, meshLocalPrefix);
+}
+
+bool LogWebUiAddresses() {
+    chip::DeviceLayer::ThreadStackMgr().LockThreadStack();
+    otInstance* instance = openthread_get_default_instance();
+    bool logged = false;
+
+    if (instance != nullptr) {
+        const otMeshLocalPrefix* meshLocalPrefix = otThreadGetMeshLocalPrefix(instance);
+        for (const otNetifAddress* address = otIp6GetUnicastAddresses(instance); address != nullptr;
+             address = address->mNext) {
+            if (!IsWebUiAddress(*address, meshLocalPrefix)) {
+                continue;
+            }
+
+            char addressString[OT_IP6_ADDRESS_STRING_SIZE];
+            otIp6AddressToString(&address->mAddress, addressString, sizeof(addressString));
+            LOG_WRN("Web UI: http://[%s]/", addressString);
+            logged = true;
+        }
+    }
+
+    chip::DeviceLayer::ThreadStackMgr().UnlockThreadStack();
+
+    if (!logged) {
+        LOG_WRN("Web UI: no LAN-routable IPv6 address yet");
+    }
+    return logged;
+}
+
+void ScheduleWebUiLogRetry(k_timeout_t delay) {
+    k_work_reschedule(&gWebUiLogWork, delay);
+}
+
+void WebUiLogWorkHandler(struct k_work*) {
+    if (!MatterBridge::Instance().ThreadAttached()) {
+        gWebUiLogAttempts = 0;
+        return;
+    }
+
+    if (LogWebUiAddresses()) {
+        gWebUiLogAttempts = 0;
+        return;
+    }
+
+    ++gWebUiLogAttempts;
+    if (gWebUiLogAttempts < kWebUiLogMaxAttempts) {
+        ScheduleWebUiLogRetry(K_MSEC(kWebUiLogRetryDelayMs));
+    } else {
+        gWebUiLogAttempts = 0;
+    }
+}
 
 uint8_t PercentToMatterLevel(uint8_t percent) {
     if (percent == 0U) {
@@ -1240,6 +1312,13 @@ void MatterBridge::HandleEvent(const DeviceLayer::ChipDeviceEvent* event, intptr
         const bool threadAttached = bridge.mThreadAttached;
         k_mutex_unlock(&bridge.mLock);
         LOG_INF("Thread %s", threadAttached ? "attached" : "detached");
+        if (threadAttached) {
+            gWebUiLogAttempts = 0;
+            ScheduleWebUiLogRetry(K_MSEC(kWebUiLogRetryDelayMs));
+        } else {
+            gWebUiLogAttempts = 0;
+            k_work_cancel_delayable(&gWebUiLogWork);
+        }
         break;
     }
     case DeviceLayer::DeviceEventType::kFactoryReset:
