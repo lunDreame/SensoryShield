@@ -544,9 +544,12 @@ void System::AlgorithmWork() {
         OnModeChanged(previousMode, mode);
     }
 
+    // Keep scoring and baseline learning active without advancing automatic controllers
+    // while manual, override, or safe outputs are selected.
+    const StimulusScore stimulus = GetAlgorithm()->EvaluateEnvironment(snapshot);
     ControlTarget nextTarget = {};
     if (mode == ControlMode::Auto) {
-        nextTarget = GetAlgorithm()->Evaluate(snapshot);
+        nextTarget = GetAlgorithm()->Evaluate(snapshot, stimulus);
     } else if (mode == ControlMode::Manual || mode == ControlMode::Override) {
         nextTarget = manualTarget;
     } else {
@@ -554,8 +557,8 @@ void System::AlgorithmWork() {
         nextTarget = safeTarget;
         nextTarget.fanOn = false;
         nextTarget.fanPercent = 0;
-        nextTarget.sensoryScore = 0.0f;
     }
+    nextTarget.sensoryScore = stimulus.combined;
 
     k_mutex_lock(&mLock, K_FOREVER);
     mTarget = nextTarget;
