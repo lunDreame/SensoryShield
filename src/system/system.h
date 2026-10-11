@@ -25,6 +25,12 @@ class System final {
         k_mutex_unlock(&mLock);
         return snapshot;
     }
+    bool EnvironmentBaselineReady() const {
+        k_mutex_lock(&mLock, K_FOREVER);
+        const bool ready = mEnvironmentBaselineReady;
+        k_mutex_unlock(&mLock);
+        return ready;
+    }
     ControlTarget Target() const {
         k_mutex_lock(&mLock, K_FOREVER);
         const ControlTarget target = mTarget;
@@ -87,6 +93,7 @@ class System final {
     mutable struct k_mutex mLock;
     SensorSnapshot mSnapshot = {};
     ControlTarget mTarget = {};
+    bool mEnvironmentBaselineReady = false;
     ControlTarget mManualTarget = {};
     ControlTarget mAppliedTarget = {};
     ControlMode mMode = ControlMode::Auto;

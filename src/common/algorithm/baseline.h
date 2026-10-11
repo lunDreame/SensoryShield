@@ -10,6 +10,7 @@ class RollingBaseline final {
     void Reset();
     void Add(float value);
     bool Ready() const;
+    bool HasSamples() const { return mCount > 0U; }
     float Median() const;
     float Mad(float epsilon = 0.001f) const;
     float Residual(float value, float epsilon = 0.001f) const;

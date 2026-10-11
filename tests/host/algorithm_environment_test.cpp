@@ -15,11 +15,17 @@ int main() {
 
     // Observation alone (manual/override/safe) establishes the baseline.
     for (int i = 0; i < 5; ++i) {
-        assert(algorithm.EvaluateEnvironment(snapshot).combined == 0.0f);
+        const auto warming = algorithm.EvaluateEnvironment(snapshot);
+        assert(warming.combined == 0.0f);
+        assert(!warming.baselineReady);
     }
     snapshot.lux = 120.0f;
     const auto increased = algorithm.EvaluateEnvironment(snapshot);
     assert(increased.combined == STIMULUS_MAX_SCORE);
+    assert(increased.baselineReady);
+    snapshot.micValid = false;
+    assert(!algorithm.EvaluateEnvironment(snapshot).baselineReady);
+    snapshot.micValid = true;
     snapshot.lux = 100.0f;
     assert(algorithm.EvaluateEnvironment(snapshot).combined == 0.0f);
 
@@ -39,5 +45,11 @@ int main() {
     const auto absent = algorithm.Evaluate(snapshot, absentScore);
     assert(absent.sensoryScore == STIMULUS_MAX_SCORE);
     assert(!absent.lightOn && !absent.fanOn);
-    puts("continuous environment scoring passed");
+    algorithm.Initialize(config);
+    assert(!algorithm.EvaluateEnvironment(snapshot).baselineReady);
+    snapshot.lux = 140.0f;
+    const auto provisional = algorithm.EvaluateEnvironment(snapshot);
+    assert(!provisional.baselineReady);
+    assert(provisional.combined > 0.0f);
+    puts("continuous scoring, provisional scoring and baseline readiness passed");
 }

@@ -6,6 +6,7 @@ export const initialStatus: StatusResponse = {
     occupied: false,
     soundEnergy: 0,
     sensoryScore: 0,
+    baselineReady: false,
     illuminanceValid: false,
     micValid: false,
     pirValid: false

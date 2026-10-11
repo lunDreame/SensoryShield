@@ -562,6 +562,7 @@ void System::AlgorithmWork() {
 
     k_mutex_lock(&mLock, K_FOREVER);
     mTarget = nextTarget;
+    mEnvironmentBaselineReady = stimulus.baselineReady;
     if (mode == ControlMode::Safe) {
         mAppliedTarget = safeTarget;
     }

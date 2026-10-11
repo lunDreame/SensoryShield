@@ -7,6 +7,7 @@ struct StimulusScore {
     float light;
     float sound;
     float combined;
+    bool baselineReady = false;
 };
 
 // Converts valid sensor input into board-independent, one-sided stimulus scores.

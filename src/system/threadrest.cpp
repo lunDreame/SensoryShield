@@ -532,14 +532,14 @@ int ThreadRest::BuildStatusJson(char* buffer, size_t bufferSize) const {
     const int written = snprintf(
         buffer, bufferSize,
         "{\"sensor\":{\"lux\":%s,\"occupied\":%s,\"soundEnergy\":%s,\"sensoryScore\":%s,"
-        "\"illuminanceValid\":%s,\"micValid\":%s,\"pirValid\":%s},"
+        "\"baselineReady\":%s,\"illuminanceValid\":%s,\"micValid\":%s,\"pirValid\":%s},"
         "\"outputs\":{\"lightOn\":%s,\"brightnessPercent\":%u,\"cctMireds\":%u,"
         "\"rgbMode\":%s,\"red\":%u,\"green\":%u,\"blue\":%u,"
         "\"fanOn\":%s,\"fanPercent\":%u},"
         "\"system\":{\"ready\":%s,\"mode\":%u,\"overrideRemainingSeconds\":%u,\"uptimeSeconds\":%u,\"firmware\":\"%s\","
         "\"matter\":{\"commissioned\":%s,\"fabricCount\":%u,\"threadAttached\":%s},"
         "\"storage\":{\"appConfig\":true,\"deviceTable\":true}}}",
-        lux, snapshot.occupied ? "true" : "false", soundEnergy, sensoryScore, snapshot.illuminanceValid ? "true" : "false",
+        lux, snapshot.occupied ? "true" : "false", soundEnergy, sensoryScore, GetSystem()->EnvironmentBaselineReady() ? "true" : "false", snapshot.illuminanceValid ? "true" : "false",
         snapshot.micValid ? "true" : "false", snapshot.pirValid ? "true" : "false", light.on ? "true" : "false",
         light.brightnessPercent, light.cctMireds, light.rgbMode ? "true" : "false", light.red, light.green, light.blue,
         fan.on ? "true" : "false", fan.speedPercent, GetSystem()->Ready() ? "true" : "false", mode,

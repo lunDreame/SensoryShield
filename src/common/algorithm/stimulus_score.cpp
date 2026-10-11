@@ -4,7 +4,7 @@
 
 namespace {
 float PositiveResidual(const RollingBaseline& baseline, float value, float noiseFloor) {
-    if (!baseline.Ready()) {
+    if (!baseline.HasSamples()) {
         return 0.0f;
     }
     return fmaxf(0.0f, value - baseline.Median()) / baseline.Mad(noiseFloor);
@@ -21,6 +21,7 @@ void StimulusScorer::Reset() {
 }
 
 StimulusScore StimulusScorer::Evaluate(const SensorSnapshot& snapshot, const AppConfig& config) {
+    const bool wasReady = mLuxBaseline.Ready() && mSoundBaseline.Ready();
     float lightResidual = 0.0f;
     const bool validLux = snapshot.illuminanceValid && isfinite(snapshot.lux) && snapshot.lux >= 0.0f;
     if (validLux) {
@@ -45,5 +46,8 @@ StimulusScore StimulusScorer::Evaluate(const SensorSnapshot& snapshot, const App
     const float lightScore = lightResidual * ValidWeight(config.lightWeight);
     const float soundScore = soundResidual * ValidWeight(config.soundWeight);
     const float combined = ClampValue(lightScore + soundScore, 0.0f, MaximumScore);
-    return {lightScore, soundScore, combined};
+    // Report readiness for the baselines used to calculate this score, before this sample was learned.
+    return {lightScore, soundScore, combined,
+            validLux && validSound && mLuxBaseline.Ready() && mSoundBaseline.Ready() &&
+            wasReady};
 }
