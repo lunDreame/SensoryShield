@@ -1,3 +1,4 @@
+import { displayedStimulusScore } from "../../shared/lib/stimulus-score";
 import "./sound-metric.css";
 import { Metric } from "../../shared/ui/Metric";
 import { Panel } from "../../shared/ui/Panel";
@@ -9,6 +10,7 @@ interface EnvironmentSummaryProps {
 }
 
 export function EnvironmentSummary({ sensor }: EnvironmentSummaryProps) {
+  const score = displayedStimulusScore(sensor.sensoryScore);
   const soundValid = sensor.micValid && Number.isFinite(sensor.soundEnergy) && sensor.soundEnergy >= 0 && sensor.soundEnergy <= 1;
   const soundPercent = soundValid ? sensor.soundEnergy * 100 : 0;
 
@@ -24,7 +26,7 @@ export function EnvironmentSummary({ sensor }: EnvironmentSummaryProps) {
           {soundValid ? <div className="sound-input-track" aria-hidden="true"><div style={{ width: `${soundPercent}%` }} /></div> : null}
           <small>{soundValid ? "마이크 상대 입력 · dB 아님" : "마이크 연결 상태를 확인하세요"}</small>
         </div>
-        <Metric label="공간의 자극 정도" value={sensor.illuminanceValid || sensor.micValid ? sensor.sensoryScore.toFixed(1) : "--"} detail={sensor.baselineReady === false ? "현재 환경 기준 · 사용하며 자동 갱신" : "빛과 소리 변화"} />
+        <Metric label="공간의 자극 정도" value={score !== null && (sensor.illuminanceValid || sensor.micValid) ? score.toFixed(1) : "--"} detail={sensor.baselineReady === false ? "현재 환경 기준 · 사용하며 자동 갱신" : "빛과 소리 변화"} />
       </div>
     </Panel>
   );

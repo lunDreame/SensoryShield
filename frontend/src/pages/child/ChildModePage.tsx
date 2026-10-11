@@ -1,3 +1,4 @@
+import { displayedStimulusScore, STIMULUS_CHANGE_THRESHOLD, STIMULUS_STRONG_THRESHOLD } from "../../shared/lib/stimulus-score";
 import { useState } from "react";
 import { setFan, setLight, setMode } from "../../shared/api/client";
 import { formatDurationMinutes } from "../../shared/lib/duration";
@@ -19,9 +20,11 @@ const durations = [
 function roomMessage(status: StatusResponse) {
   if (!status.system.ready) return "기기를 기다리고 있어요";
   if (status.sensor.baselineReady !== true) return "지금 방을 기준으로 변화를 살펴봐요";
+  const score = displayedStimulusScore(status.sensor.sensoryScore);
+  if (score === null) return "방의 상태를 확인하고 있어요";
   if (!status.sensor.occupied) return "방이 쉬고 있어요";
-  if (status.sensor.sensoryScore < 2.8) return "지금 방은 편안해요";
-  if (status.sensor.sensoryScore < 5.6) return "방에 조금 변화가 있어요";
+  if (score < STIMULUS_CHANGE_THRESHOLD) return "지금 방은 편안해요";
+  if (score < STIMULUS_STRONG_THRESHOLD) return "방에 조금 변화가 있어요";
   return "빛이나 소리가 강해졌어요";
 }
 
@@ -77,7 +80,7 @@ export function ChildModePage({ status, connectionError }: ChildModePageProps) {
         <span className="child-kicker">우리 집</span>
         <h1 id="child-room-title">{roomMessage(status)}</h1>
         <p>{status.system.ready ? status.sensor.baselineReady === false ? "지금 방의 밝기와 소리를 기준으로 사용하고, 지내면서 기준을 자동으로 바꿔요. 불편하면 아래에서 알려주세요." : "불편한 것이 있다면 아래에서 알려주세요." : connectionError ? "기기 연결을 확인해 주세요." : "연결되면 방의 상태를 알려드릴게요."}</p>
-        <div className={`child-room-orb${status.system.ready && status.sensor.baselineReady === true && status.sensor.sensoryScore >= 5.6 ? " is-strong" : ""}`} aria-hidden="true">
+        <div className={`child-room-orb${status.system.ready && status.sensor.baselineReady === true && (displayedStimulusScore(status.sensor.sensoryScore) ?? 0) >= STIMULUS_STRONG_THRESHOLD ? " is-strong" : ""}`} aria-hidden="true">
           <img src="/illustrations/child-at-home.png" alt="" />
         </div>
       </section>
