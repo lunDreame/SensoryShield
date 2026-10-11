@@ -69,6 +69,8 @@ int System::Initialize() {
         return ret;
     }
 
+    // Historical onboarding readings lack output context; start with live observations instead.
+
     ret = InitializeMatter();
     if (ret != 0) {
         LOG_WRN("Matter init deferred: %d", ret);
@@ -334,6 +336,7 @@ int System::InitializeWorks() {
 
 int System::SetMode(ControlMode mode, uint32_t overrideDurationMs) {
     k_mutex_lock(&mLock, K_FOREVER);
+    if (mode != ControlMode::Manual) mMeasurement.Invalidate();
     if (mode == ControlMode::Override) {
         mOverrideDeadlineMs = k_uptime_get() + overrideDurationMs;
     } else {
@@ -371,6 +374,7 @@ int System::SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMired
 int System::SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
                            uint8_t green, uint8_t blue) {
     k_mutex_lock(&mLock, K_FOREVER);
+    mMeasurement.Invalidate();
     ControlTarget next = mManualTarget;
     const ControlMode mode = mMode;
     k_mutex_unlock(&mLock);
@@ -403,6 +407,7 @@ int System::SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMired
 
 int System::SetManualFan(bool on, uint8_t speedPercent) {
     k_mutex_lock(&mLock, K_FOREVER);
+    mMeasurement.Invalidate();
     ControlTarget next = mManualTarget;
     const ControlMode mode = mMode;
     k_mutex_unlock(&mLock);
@@ -432,11 +437,37 @@ int System::SetManualFan(bool on, uint8_t speedPercent) {
     return SetMode(ControlMode::Manual);
 }
 
-int System::UpdateConfig(const AppConfig& config) {
-    const int ret = GetMemory()->SaveConfig(config);
-    if (ret == 0) {
-        GetAlgorithm()->SetConfig(GetMemory()->Config());
+int System::StartEnvironmentMeasurement() {
+    k_mutex_lock(&mLock, K_FOREVER);
+    if (!mReady || mMode == ControlMode::Safe) {
+        k_mutex_unlock(&mLock); return -EINVAL;
     }
+    // Hold the current outputs: record the usual environment before any experience changes.
+    const ControlMode previous = mMode;
+    mManualTarget = mAppliedTarget;
+    mTarget = mAppliedTarget;
+    mMode = ControlMode::Manual;
+    mOverrideDeadlineMs = 0;
+    const ControlTarget held = mManualTarget;
+    mMeasurement.Start(k_uptime_get_32(), held.brightnessPercent, held.cctMireds);
+    k_mutex_unlock(&mLock);
+    OnModeChanged(previous, ControlMode::Manual);
+    if (previous != ControlMode::Manual) PersistRuntimeState(ControlMode::Manual, held);
+    return 0;
+}
+
+void System::CancelEnvironmentMeasurement() {
+    k_mutex_lock(&mLock, K_FOREVER);
+    mMeasurement.Cancel();
+    k_mutex_unlock(&mLock);
+}
+
+int System::UpdateConfig(const AppConfig& config, bool useMeasuredEnvironment) {
+    if (useMeasuredEnvironment) return -ENOTSUP; // Onboarding no longer commits raw environment recordings.
+    k_mutex_lock(&mLock, K_FOREVER);
+    const int ret = GetMemory()->SaveConfig(config);
+    if (ret == 0) GetAlgorithm()->SetConfig(GetMemory()->Config());
+    k_mutex_unlock(&mLock);
     return ret;
 }
 
@@ -502,16 +533,38 @@ void System::ActuatorRampWorkHandler(struct k_work* work) {
 }
 
 void System::SensorWork() {
+    k_mutex_lock(&mLock, K_FOREVER);
+    ControlTarget observed = mAppliedTarget;
+    SyncAppliedTargetFromDevices(observed); // Includes changes made through Matter.
+    const ControlTarget requested = mTarget;
+    k_mutex_unlock(&mLock);
     float lux = 0.0f;
     const int luxRet = GetBH1750()->ReadLux(&lux);
     GetPIR()->Poll();
 
     const SoundFeatures sound = GetMic()->LatestFeatures();
-    const SensorSnapshot snapshot = {lux,         sound,       GetPIR()->IsOccupied(), GetPIR()->LastMotionMs(),
+    SensorSnapshot snapshot = {lux,         sound,       GetPIR()->IsOccupied(), GetPIR()->LastMotionMs(),
                                      luxRet == 0, sound.valid, GetPIR()->Healthy()};
 
     k_mutex_lock(&mLock, K_FOREVER);
+    ControlTarget after = mAppliedTarget;
+    SyncAppliedTargetFromDevices(after);
+    snapshot.observedAtMs = k_uptime_get_32();
+    const bool lightConsistent = observed.lightOn == after.lightOn &&
+        observed.brightnessPercent == after.brightnessPercent && observed.cctMireds == after.cctMireds &&
+        observed.rgbMode == after.rgbMode && observed.red == after.red &&
+        observed.green == after.green && observed.blue == after.blue;
+    snapshot.observedOutputs = {true, observed.lightOn, observed.brightnessPercent, observed.cctMireds,
+        observed.rgbMode, observed.red, observed.green, observed.blue, observed.fanOn, observed.fanPercent,
+        lightConsistent &&
+        after.brightnessPercent == (requested.lightOn ? requested.brightnessPercent : 0U) &&
+        after.cctMireds == requested.cctMireds,
+        observed.fanOn == after.fanOn && observed.fanPercent == after.fanPercent &&
+        after.fanPercent == (requested.fanOn ? requested.fanPercent : 0U), lightConsistent};
     mSnapshot = snapshot;
+    const bool settled = mMode == ControlMode::Manual && !(mAppliedTarget != mManualTarget) &&
+        mMeasurement.Matches(mAppliedTarget.brightnessPercent, mAppliedTarget.cctMireds);
+    mMeasurement.Observe(snapshot, settled, k_uptime_get_32());
     k_mutex_unlock(&mLock);
 
     GetIlluminanceDevice()->SetCurrentLux(snapshot.lux, snapshot.illuminanceValid);
@@ -546,6 +599,7 @@ void System::AlgorithmWork() {
 
     // Keep scoring and baseline learning active without advancing automatic controllers
     // while manual, override, or safe outputs are selected.
+    k_mutex_lock(&mLock, K_FOREVER);
     const StimulusScore stimulus = GetAlgorithm()->EvaluateEnvironment(snapshot);
     ControlTarget nextTarget = {};
     if (mode == ControlMode::Auto) {
@@ -560,7 +614,6 @@ void System::AlgorithmWork() {
     }
     nextTarget.sensoryScore = stimulus.combined;
 
-    k_mutex_lock(&mLock, K_FOREVER);
     mTarget = nextTarget;
     mEnvironmentBaselineReady = stimulus.baselineReady;
     if (mode == ControlMode::Safe) {
@@ -677,6 +730,9 @@ void System::OnModeChanged(ControlMode previous, ControlMode current) {
     if (previous == current) {
         return;
     }
+    k_mutex_lock(&mLock, K_FOREVER);
+    GetAlgorithm()->ResetAutomaticLight();
+    k_mutex_unlock(&mLock);
     LOG_INF("Mode changed: %u -> %u", static_cast<unsigned int>(previous), static_cast<unsigned int>(current));
 }
 

@@ -2,6 +2,7 @@
 
 #include "common/algorithm/baseline.h"
 #include "definition.h"
+#include "common/algorithm/environment_measurement.h"
 #include <math.h>
 
 class SoundFanController final {
@@ -19,15 +20,22 @@ class SoundFanController final {
         mLastSample = mLastUpdate = mPendingSince = 0;
     }
 
+    void SeedEnvironment(const InitialEnvironment& initial) {
+        Reset();
+        if (initial.Valid()) for (uint32_t i = 0; i < initial.count; ++i) mBaseline.Add(initial.sound[i]);
+    }
+
     uint8_t Evaluate(const SensorSnapshot& snapshot, const AppConfig& config, uint32_t now) {
         const uint8_t cap = config.fanMaxPercent > 100 ? 100 : config.fanMaxPercent;
-        if (!snapshot.pirValid || !snapshot.occupied || cap == 0U) {
+        const uint8_t normal = ClampValue<uint8_t>(config.preferredFanPercent, 0, cap);
+        const uint8_t quiet = normal < QuietPercent ? normal : QuietPercent;
+        if (!snapshot.pirValid || !snapshot.occupied || normal == 0U) {
             mPercent = 0;
             mHighPending = mLowPending = false;
             mLastUpdate = now;
             return 0;
         }
-        if (mPercent > cap) mPercent = cap;
+        if (mPercent > normal) mPercent = normal;
         const auto& sound = snapshot.sound;
         const bool valid = snapshot.micValid && sound.valid &&
             isfinite(sound.energy) && isfinite(sound.peak) && isfinite(sound.delta) &&
@@ -36,7 +44,7 @@ class SoundFanController final {
         if (!valid) {
             mHighPending = mLowPending = false;
             // Never increase output when input cannot be trusted; do not interpret failure as silence.
-            if (mPercent > QuietPercent) mPercent = QuietPercent;
+            if (mPercent > quiet) mPercent = quiet;
             mLastUpdate = now;
             return mPercent;
         }
@@ -57,7 +65,14 @@ class SoundFanController final {
         const bool low = ready && severity <= 1.0f;
         const bool impulse = ready && sound.delta > 2.0f * scale && sound.peak > median + 4.0f * scale;
         // Compare before learning. Elevated intervals must not become the new quiet baseline.
-        if (!ready || (upward <= 1.2f && !impulse)) mBaseline.Add(sound.energy);
+        if (snapshot.learnSound && (!ready || (upward <= 1.2f && !impulse))) mBaseline.Add(sound.energy);
+
+        if (!snapshot.learnSound) {
+            // Fan commands/ramping must not advance quiet/recovery timers or learn their own sound.
+            mHighPending = mLowPending = false;
+            mLastUpdate = now;
+            return mPercent;
+        }
 
         if (!mQuiet) {
             mLowPending = false;
@@ -80,9 +95,9 @@ class SoundFanController final {
         }
 
         // Warm-up and confirmed noise use quiet output. Short isolated peaks do not change the mode.
-        const uint8_t desired = ClampValue<uint8_t>(!ready || mQuiet ? QuietPercent : NormalPercent, 0, cap);
+        const uint8_t desired = ClampValue<uint8_t>(!ready || mQuiet ? quiet : normal, 0, cap);
         if (mPercent == 0) {
-            mPercent = ClampValue<uint8_t>(QuietPercent, 1, cap);
+            mPercent = ClampValue<uint8_t>(quiet, 1, normal);
         } else if ((now - mLastUpdate) >= ALGORITHM_PERIOD_MS) {
             const uint8_t step = 2;
             if (mPercent < desired) mPercent += desired - mPercent > step ? step : desired - mPercent;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "definition.h"
+#include "common/algorithm/environment_measurement.h"
 
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
@@ -15,7 +16,15 @@ class System final {
     int SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
                        uint8_t green, uint8_t blue);
     int SetManualFan(bool on, uint8_t speedPercent);
-    int UpdateConfig(const AppConfig& config);
+    int UpdateConfig(const AppConfig& config, bool useMeasuredEnvironment = false);
+    int StartEnvironmentMeasurement();
+    void CancelEnvironmentMeasurement();
+    EnvironmentMeasurement Measurement() const {
+        k_mutex_lock(&mLock, K_FOREVER);
+        const auto result = mMeasurement;
+        k_mutex_unlock(&mLock);
+        return result;
+    }
     int FactoryReset();
     int RegisterMatterEndpoints();
 
@@ -92,6 +101,7 @@ class System final {
     struct gpio_callback mFactoryResetButtonCallback = {};
     mutable struct k_mutex mLock;
     SensorSnapshot mSnapshot = {};
+    EnvironmentMeasurement mMeasurement;
     ControlTarget mTarget = {};
     bool mEnvironmentBaselineReady = false;
     ControlTarget mManualTarget = {};

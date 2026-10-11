@@ -11,6 +11,9 @@ const initialConfig: AppConfig = {
   maxBrightness: 100,
   minCCTMireds: 250,
   maxCCTMireds: 454,
+  preferredCCTMireds: 333,
+  preferredBrightness: 100,
+  preferredFanPercent: 60,
   fanMaxPercent: 100,
   occupancyTimeoutMs: 30000,
   profileConfigured: true
@@ -25,6 +28,9 @@ const labels: Record<EditableConfigKey, { title: string; unit: string }> = {
   maxBrightness: { title: "가장 높은 자동 밝기", unit: "%" },
   minCCTMireds: { title: "가장 선명한 빛", unit: "K" },
   maxCCTMireds: { title: "가장 따뜻한 빛", unit: "K" },
+  preferredBrightness: { title: "평소 조명 밝기", unit: "%" },
+  preferredCCTMireds: { title: "자극 완화 시 사용할 빛", unit: "K" },
+  preferredFanPercent: { title: "평소 바람 세기", unit: "%" },
   fanMaxPercent: { title: "최대 바람 세기", unit: "%" },
   occupancyTimeoutMs: { title: "움직임 후 유지 시간", unit: "초" }
 };
@@ -58,7 +64,7 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
 
   function displayValue(key: EditableConfigKey) {
     if (key === "occupancyTimeoutMs") return Math.round(config[key] / 1000);
-    if (key === "minCCTMireds" || key === "maxCCTMireds") return Math.round(1_000_000 / config[key]);
+    if (key.includes("CCT")) return Math.round(1_000_000 / config[key]);
     if (key === "lightWeight" || key === "soundWeight") return Math.round(config[key] * 100);
     return config[key];
   }
@@ -66,7 +72,7 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
   function update(key: EditableConfigKey, value: number) {
     const storedValue = key === "occupancyTimeoutMs"
       ? value * 1000
-      : key === "minCCTMireds" || key === "maxCCTMireds"
+      : key.includes("CCT")
         ? Math.round(1_000_000 / value)
         : key === "lightWeight" || key === "soundWeight"
           ? value / 100
@@ -101,6 +107,10 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
       setError("최소 밝기는 최대 밝기보다 클 수 없어요.");
       return;
     }
+    if (!Number.isInteger(config.preferredBrightness) || config.preferredBrightness < config.minBrightness ||
+        config.preferredBrightness > config.maxBrightness) {
+      setError("평소 밝기를 최소·최대 밝기 범위 안에서 선택해 주세요."); return;
+    }
     if (config.lightWeight < 0 || config.lightWeight > 1 || config.soundWeight < 0 || config.soundWeight > 1) {
       setError("빛과 소리 반영 정도는 0에서 100% 사이로 설정해 주세요.");
       return;
@@ -108,6 +118,9 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
     if (config.minBrightness < 0 || config.maxBrightness > 100 || config.fanMaxPercent < 0 || config.fanMaxPercent > 100) {
       setError("밝기와 바람 세기는 0에서 100% 사이로 설정해 주세요.");
       return;
+    }
+    if (!Number.isInteger(config.preferredFanPercent) || config.preferredFanPercent < 0 || config.preferredFanPercent > config.fanMaxPercent) {
+      setError("평소 바람 세기를 0에서 최대 바람 세기 사이로 설정해 주세요."); return;
     }
     if (config.occupancyTimeoutMs < 1000 || config.occupancyTimeoutMs > 600000) {
       setError("움직임 후 유지 시간은 1초에서 10분 사이로 설정해 주세요.");
@@ -119,6 +132,11 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
     }
     if (config.minCCTMireds < 250 || config.maxCCTMireds > 454) {
       setError("빛의 따뜻함은 2,203K에서 4,000K 사이로 설정해 주세요.");
+      return;
+    }
+    if (!Number.isFinite(config.preferredCCTMireds) || config.preferredCCTMireds < config.minCCTMireds ||
+        config.preferredCCTMireds > config.maxCCTMireds) {
+      setError("자극 완화 시 사용할 색온도를 설정한 색온도 범위 안에서 선택해 주세요.");
       return;
     }
 
@@ -157,10 +175,11 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
           <p>공간에 맞게 조명과 바람의 범위를 정해보세요.</p>
         </div>
       </section>
-      <Panel title="개인 맞춤 기준" subtitle="처음 선택한 빛·소리 민감도와 선호 조명을 다시 설정할 수 있어요."
+      <Panel title="개인 맞춤 기준" subtitle="처음 선택한 빛·소리 민감도와 자극 완화 시 사용할 빛을 다시 설정할 수 있어요."
         action={<button className="button button-weak" type="button" disabled={pending} onClick={() => void restartOnboarding()}>개인 설정 다시 하기</button>}>
         <p className="profile-setting-note">다시 답하면 새로운 선택이 자동 조절의 기준으로 저장돼요.</p>
       </Panel>
+      <p className="profile-setting-note">평소 환경을 자동으로 학습하고, 빛과 소리 변화에 맞춰 조명과 팬을 조절해요.</p>
       <Panel title="자동 반응 민감도" subtitle="평소와 다른 빛과 소리를 감지했을 때 조명이 반응하는 정도">
         <div className="settings-grid">
           {(["lightWeight", "soundWeight"] as EditableConfigKey[]).map((key) => (
@@ -179,36 +198,36 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
               </div>
               <small className="setting-meaning">
                 <b>{describeSensitivity(Number(displayValue(key)))}</b>
-                {key === "lightWeight" ? " · 높을수록 주변 밝기 변화에 조명이 더 빠르게 반응해요." : " · 높을수록 소음 변화가 조명과 팬 제어에 더 크게 반영돼요."}
+                {key === "lightWeight" ? " · 높을수록 같은 밝기 변화에도 조명을 더 크게 조절해요." : " · 높을수록 소음 변화가 조명과 팬 제어에 더 크게 반영돼요."}
               </small>
             </label>
           ))}
         </div>
       </Panel>
-      <Panel title="자동 조명 범위" subtitle="자동 조절로 사용할 가장 어두운 값과 가장 밝은 값">
+      <Panel title="평소 조명과 자극 완화 범위" subtitle="변화가 커지면 조명을 낮추면서 선택한 빛으로 바꿔요. 환경이 안정되면 평소 밝기와 빛으로 돌아가요.">
         <div className="settings-grid">
-          {(["minBrightness", "maxBrightness", "minCCTMireds", "maxCCTMireds"] as EditableConfigKey[]).map((key) => (
+          {(["minBrightness", "maxBrightness", "preferredBrightness", "minCCTMireds", "maxCCTMireds", "preferredCCTMireds"] as EditableConfigKey[]).map((key) => (
             <label className="input-line" key={key}>
               <span>{labels[key].title}</span>
               <div className="field-with-unit">
                 <input type="number" min={key.includes("Brightness") ? 0 : key.includes("CCT") ? 2203 : 1} max={key.includes("Brightness") ? 100 : key.includes("CCT") ? 4000 : 1000} step={key.includes("CCT") ? 100 : 1} value={inputValue(key)} onChange={(event) => changeInput(key, event.target.value)} />
                 <em>{labels[key].unit}</em>
               </div>
-              {key.includes("CCT") ? <small className="setting-meaning"><b>{describeKelvin(Number(displayValue(key)))}</b> · 숫자가 낮을수록 노란빛, 높을수록 흰빛에 가까워요.</small> : <small className="setting-meaning">자동 조절 중에도 이 범위를 벗어나지 않아요.</small>}
+              {key.includes("CCT") ? <small className="setting-meaning"><b>{describeKelvin(Number(displayValue(key)))}</b> · {key === "preferredCCTMireds" ? "빛이나 소리의 변화가 커져 조명을 낮출 때 사용할 색온도예요." : "숫자가 낮을수록 노란빛, 높을수록 흰빛에 가까워요. 평소에는 가장 선명한 빛 설정을 사용해요."}</small> : <small className="setting-meaning">{key === "preferredBrightness" ? "환경 변화가 줄면 이 밝기로 돌아가요." : "자동 조절 중에도 이 범위를 벗어나지 않아요."}</small>}
             </label>
           ))}
         </div>
       </Panel>
-      <Panel title="바람 세기" subtitle="사용할 수 있는 가장 센 바람을 정해요.">
+      <Panel title="바람 세기" subtitle="평소 바람 세기와 최대 세기를 정해요. 소음 변화가 줄면 평소 세기로 돌아가요.">
         <div className="settings-grid">
-          {(["fanMaxPercent"] as EditableConfigKey[]).map((key) => (
+          {(["fanMaxPercent", "preferredFanPercent"] as EditableConfigKey[]).map((key) => (
             <label className="input-line" key={key}>
               <span>{labels[key].title}</span>
               <div className="field-with-unit">
                 <input type="number" min={0} max={100} value={inputValue(key)} onChange={(event) => changeInput(key, event.target.value)} />
                 <em>{labels[key].unit}</em>
               </div>
-              <small style={{ color: "var(--body)", lineHeight: 1.6 }}>0%는 팬을 끄고, 1~100% 범위에서 원하는 바람 세기를 사용할 수 있어요.</small>
+              <small style={{ color: "var(--body)", lineHeight: 1.6 }}>{key === "preferredFanPercent" ? "소음 변화가 커지면 이 세기 이하로 줄이고, 줄어들면 다시 돌아가요. 0%는 자동 팬을 꺼두는 설정이에요." : "선택할 수 있는 바람의 상한이에요. 실제 팬의 소리와 회전은 기기와 설치 상태에 따라 달라요."}</small>
             </label>
           ))}
         </div>

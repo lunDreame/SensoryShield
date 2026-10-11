@@ -1,4 +1,4 @@
-import type { AppConfig, ControlMode, StatusResponse, SystemHealth } from "../types/domain";
+import type { AppConfig, EnvironmentMeasurement, ControlMode, StatusResponse, SystemHealth } from "../types/domain";
 
 export const initialStatus: StatusResponse = {
   sensor: {
@@ -120,15 +120,18 @@ export function setFan(payload: { power: boolean; speed: number }): Promise<{ ok
   });
 }
 
-export function saveProfile(config: AppConfig): Promise<{ ok: boolean }> {
+export function saveProfile(config: AppConfig, useMeasuredEnvironment = false): Promise<{ ok: boolean }> {
   return request("/api/profile", {
     method: "POST",
-    body: JSON.stringify(config)
+    body: JSON.stringify({ ...config, useMeasuredEnvironment })
   });
 }
 
-export function getProfile(): Promise<AppConfig> {
-  return request("/api/profile");
+export async function getProfile(): Promise<AppConfig> {
+  const config = await request<AppConfig>("/api/profile");
+  // Older firmware did not return a preferred tone. Preserve its allowed range.
+  return { ...config, preferredFanPercent: config.preferredFanPercent ?? Math.min(60, config.fanMaxPercent), preferredBrightness: config.preferredBrightness ?? config.maxBrightness, preferredCCTMireds: config.preferredCCTMireds ??
+    Math.round((config.minCCTMireds + config.maxCCTMireds) / 2) };
 }
 
 export function factoryReset(): Promise<{ ok: boolean }> {
@@ -136,4 +139,11 @@ export function factoryReset(): Promise<{ ok: boolean }> {
     method: "POST",
     body: JSON.stringify({ confirm: true })
   });
+}
+
+export function getEnvironmentMeasurement(): Promise<EnvironmentMeasurement> {
+  return request("/api/environment-measurement");
+}
+export function commandEnvironmentMeasurement(action: "start" | "cancel"): Promise<EnvironmentMeasurement> {
+  return request("/api/environment-measurement", { method: "POST", body: JSON.stringify({ action }) });
 }

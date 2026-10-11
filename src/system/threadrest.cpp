@@ -19,10 +19,10 @@
 LOG_MODULE_REGISTER(threadrest, LOG_LEVEL_INF);
 
 #define THREAD_REST_PORT 80U
-#define THREAD_REST_REQUEST_CAPACITY 320U
+#define THREAD_REST_REQUEST_CAPACITY 512U
 #define THREAD_REST_RESPONSE_CAPACITY 1024U
 
-enum class ApiRoute : uint8_t { Status, Light, Fan, Mode, Profile, Diagnostics, FactoryReset };
+enum class ApiRoute : uint8_t { Status, Light, Fan, Mode, Profile, Diagnostics, FactoryReset, Measurement };
 
 struct ApiContext {
     ApiRoute route;
@@ -51,6 +51,8 @@ struct ModeRequest {
     uint32_t durationMinutes;
 };
 
+struct MeasurementRequest { const char* action; };
+
 struct ResetRequest {
     bool confirm;
 };
@@ -65,6 +67,10 @@ struct ProfileRequest {
     int32_t fanMaxPercent;
     int32_t occupancyTimeoutMs;
     bool profileConfigured;
+    int32_t preferredCCTMireds;
+    int32_t preferredBrightness;
+    bool useMeasuredEnvironment;
+    int32_t preferredFanPercent;
 };
 
 struct StaticAsset {
@@ -89,6 +95,10 @@ extern const StaticAsset kAppModeControl;
 extern const StaticAsset kAppQuietSound;
 extern const StaticAsset kAppSensoryStatus;
 extern const StaticAsset kAppSoftLight;
+extern const StaticAsset kAppFeedbackTooBright;
+extern const StaticAsset kAppFeedbackTooDark;
+extern const StaticAsset kAppFeedbackTooLoud;
+extern const StaticAsset kAppFeedbackTooQuiet;
 
 static const struct json_obj_descr kLightFields[] = {
     JSON_OBJ_DESCR_PRIM(LightRequest, power, JSON_TOK_TRUE),
@@ -110,6 +120,9 @@ static const struct json_obj_descr kModeFields[] = {
 static const struct json_obj_descr kResetFields[] = {
     JSON_OBJ_DESCR_PRIM(ResetRequest, confirm, JSON_TOK_TRUE),
 };
+static const struct json_obj_descr kMeasurementFields[] = {
+    JSON_OBJ_DESCR_PRIM(MeasurementRequest, action, JSON_TOK_STRING),
+};
 static const struct json_obj_descr kProfileFields[] = {
     JSON_OBJ_DESCR_PRIM(ProfileRequest, lightWeight, JSON_TOK_FLOAT),
     JSON_OBJ_DESCR_PRIM(ProfileRequest, soundWeight, JSON_TOK_FLOAT),
@@ -120,6 +133,10 @@ static const struct json_obj_descr kProfileFields[] = {
     JSON_OBJ_DESCR_PRIM(ProfileRequest, fanMaxPercent, JSON_TOK_NUMBER),
     JSON_OBJ_DESCR_PRIM(ProfileRequest, occupancyTimeoutMs, JSON_TOK_NUMBER),
     JSON_OBJ_DESCR_PRIM(ProfileRequest, profileConfigured, JSON_TOK_TRUE),
+    JSON_OBJ_DESCR_PRIM(ProfileRequest, preferredCCTMireds, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(ProfileRequest, preferredBrightness, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(ProfileRequest, useMeasuredEnvironment, JSON_TOK_TRUE),
+    JSON_OBJ_DESCR_PRIM(ProfileRequest, preferredFanPercent, JSON_TOK_NUMBER),
 };
 
 const struct http_header kCorsHeaders[] = {
@@ -136,8 +153,12 @@ ApiContext kModeContext{ApiRoute::Mode};
 ApiContext kProfileContext{ApiRoute::Profile};
 ApiContext kDiagnosticsContext{ApiRoute::Diagnostics};
 ApiContext kResetContext{ApiRoute::FactoryReset};
+ApiContext kMeasurementContext{ApiRoute::Measurement};
 constexpr int kLightRequiredFields = BIT(0) | BIT(1) | BIT(2);
-constexpr int kProfileRequiredFields = BIT_MASK(ARRAY_SIZE(kProfileFields));
+constexpr int kProfileRequiredFields = BIT_MASK(9);
+constexpr int kPreferredCCTField = BIT(9);
+constexpr int kPreferredBrightnessField = BIT(10);
+constexpr int kPreferredFanField = BIT(12);
 
 uint16_t servicePort = THREAD_REST_PORT;
 HTTP_SERVICE_DEFINE(sensoryshield_thread_rest, nullptr, &servicePort, 8, 8, nullptr, nullptr, nullptr);
@@ -248,6 +269,10 @@ PLAIN_STATIC_RESOURCE_DETAIL(modeControlDetail, "image/png", kAppModeControl);
 PLAIN_STATIC_RESOURCE_DETAIL(quietSoundDetail, "image/png", kAppQuietSound);
 PLAIN_STATIC_RESOURCE_DETAIL(sensoryStatusDetail, "image/png", kAppSensoryStatus);
 PLAIN_STATIC_RESOURCE_DETAIL(softLightDetail, "image/png", kAppSoftLight);
+PLAIN_STATIC_RESOURCE_DETAIL(feedbackTooBrightDetail, "image/png", kAppFeedbackTooBright);
+PLAIN_STATIC_RESOURCE_DETAIL(feedbackTooDarkDetail, "image/png", kAppFeedbackTooDark);
+PLAIN_STATIC_RESOURCE_DETAIL(feedbackTooLoudDetail, "image/png", kAppFeedbackTooLoud);
+PLAIN_STATIC_RESOURCE_DETAIL(feedbackTooQuietDetail, "image/png", kAppFeedbackTooQuiet);
 
 HTTP_RESOURCE_DEFINE(indexResource, sensoryshield_thread_rest, "/", &indexDetail);
 HTTP_RESOURCE_DEFINE(javaScriptResource, sensoryshield_thread_rest, "/assets/app.js", &javaScriptDetail);
@@ -279,6 +304,14 @@ HTTP_RESOURCE_DEFINE(sensoryStatusResource, sensoryshield_thread_rest, "/illustr
                      &sensoryStatusDetail);
 HTTP_RESOURCE_DEFINE(softLightResource, sensoryshield_thread_rest, "/illustrations/soft-light.png",
                      &softLightDetail);
+HTTP_RESOURCE_DEFINE(feedbackTooBrightResource, sensoryshield_thread_rest, "/illustrations/feedback-too-bright.png",
+                     &feedbackTooBrightDetail);
+HTTP_RESOURCE_DEFINE(feedbackTooDarkResource, sensoryshield_thread_rest, "/illustrations/feedback-too-dark.png",
+                     &feedbackTooDarkDetail);
+HTTP_RESOURCE_DEFINE(feedbackTooLoudResource, sensoryshield_thread_rest, "/illustrations/feedback-too-loud.png",
+                     &feedbackTooLoudDetail);
+HTTP_RESOURCE_DEFINE(feedbackTooQuietResource, sensoryshield_thread_rest, "/illustrations/feedback-too-quiet.png",
+                     &feedbackTooQuietDetail);
 
 #undef GZIP_STATIC_RESOURCE_DETAIL
 #undef PLAIN_STATIC_RESOURCE_DETAIL
@@ -330,6 +363,20 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
         case ApiRoute::Diagnostics:
             ret = GetThreadRest()->BuildDiagnosticsJson(context->response, sizeof(context->response));
             break;
+        case ApiRoute::Measurement:
+            if (isPost) {
+                context->request[context->requestLength] = '\0';
+                MeasurementRequest payload{};
+                const int parsed = json_obj_parse(context->request, context->requestLength,
+                    kMeasurementFields, ARRAY_SIZE(kMeasurementFields), &payload);
+                if (parsed != BIT(0)) ret = -EINVAL;
+                else if (strcmp(payload.action, "start") == 0) ret = GetSystem()->StartEnvironmentMeasurement();
+                else if (strcmp(payload.action, "cancel") == 0) GetSystem()->CancelEnvironmentMeasurement();
+                else ret = -EINVAL;
+                context->requestLength = 0;
+            }
+            if (ret == 0) ret = GetThreadRest()->BuildMeasurementJson(context->response, sizeof(context->response));
+            break;
         case ApiRoute::Profile:
             if (isPost) {
                 context->request[context->requestLength] = '\0';
@@ -338,7 +385,15 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
                 float soundWeight = 0.0f;
                 const int parsed = json_obj_parse(context->request, context->requestLength, kProfileFields,
                                                   ARRAY_SIZE(kProfileFields), &payload);
-                if (parsed != kProfileRequiredFields || !IsValidProfileRequest(payload)) {
+                if (parsed < 0 || (parsed & kProfileRequiredFields) != kProfileRequiredFields ||
+                    !IsValidProfileRequest(payload) ||
+                    ((parsed & kPreferredCCTField) != 0 &&
+                     (payload.preferredCCTMireds < payload.minCCTMireds ||
+                      payload.preferredCCTMireds > payload.maxCCTMireds)) ||
+                    ((parsed & kPreferredBrightnessField) != 0 &&
+                     (payload.preferredBrightness < payload.minBrightness || payload.preferredBrightness > payload.maxBrightness)) ||
+                    ((parsed & kPreferredFanField) != 0 &&
+                     (payload.preferredFanPercent < 0 || payload.preferredFanPercent > payload.fanMaxPercent))) {
                     ret = -EINVAL;
                 } else {
                     ret = ParseFixedToken(payload.lightWeight, &lightWeight);
@@ -357,8 +412,15 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
                                               static_cast<uint16_t>(payload.maxCCTMireds),
                                               static_cast<uint8_t>(payload.fanMaxPercent),
                                               static_cast<uint32_t>(payload.occupancyTimeoutMs),
-                                              payload.profileConfigured};
-                    ret = GetThreadRest()->HandleProfileUpdate(config);
+                                              payload.profileConfigured,
+                                              static_cast<uint16_t>((parsed & kPreferredCCTField) != 0
+                                                  ? payload.preferredCCTMireds
+                                                  : GetMemory()->Config().preferredCCTMireds),
+                                              static_cast<uint8_t>((parsed & kPreferredBrightnessField) != 0
+                                                  ? payload.preferredBrightness : GetMemory()->Config().preferredBrightness),
+                                              static_cast<uint8_t>((parsed & kPreferredFanField) != 0
+                                                  ? payload.preferredFanPercent : GetMemory()->Config().preferredFanPercent)};
+                    ret = GetThreadRest()->HandleProfileUpdate(config, payload.useMeasuredEnvironment);
                 }
                 context->requestLength = 0U;
             } else {
@@ -425,7 +487,7 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
         body = "{\"ok\":false,\"error\":\"request failed\"}";
         bodyLength = strlen(body);
     } else if (context->route == ApiRoute::Status || context->route == ApiRoute::Diagnostics ||
-               (context->route == ApiRoute::Profile && !isPost)) {
+               (context->route == ApiRoute::Profile && !isPost) || context->route == ApiRoute::Measurement) {
         body = context->response;
         bodyLength = strlen(context->response);
     }
@@ -446,6 +508,7 @@ API_RESOURCE_DETAIL(statusDetail, BIT(HTTP_GET) | BIT(HTTP_OPTIONS), kStatusCont
 API_RESOURCE_DETAIL(lightDetail, BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kLightContext);
 API_RESOURCE_DETAIL(fanDetail, BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kFanContext);
 API_RESOURCE_DETAIL(modeDetail, BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kModeContext);
+API_RESOURCE_DETAIL(measurementDetail, BIT(HTTP_GET) | BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kMeasurementContext);
 API_RESOURCE_DETAIL(profileDetail, BIT(HTTP_GET) | BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kProfileContext);
 API_RESOURCE_DETAIL(diagnosticsDetail, BIT(HTTP_GET) | BIT(HTTP_OPTIONS), kDiagnosticsContext);
 API_RESOURCE_DETAIL(resetDetail, BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kResetContext);
@@ -454,6 +517,7 @@ HTTP_RESOURCE_DEFINE(statusResource, sensoryshield_thread_rest, "/api/status", &
 HTTP_RESOURCE_DEFINE(lightResource, sensoryshield_thread_rest, "/api/light", &lightDetail);
 HTTP_RESOURCE_DEFINE(fanResource, sensoryshield_thread_rest, "/api/fan", &fanDetail);
 HTTP_RESOURCE_DEFINE(modeResource, sensoryshield_thread_rest, "/api/mode", &modeDetail);
+HTTP_RESOURCE_DEFINE(measurementResource, sensoryshield_thread_rest, "/api/environment-measurement", &measurementDetail);
 HTTP_RESOURCE_DEFINE(profileResource, sensoryshield_thread_rest, "/api/profile", &profileDetail);
 HTTP_RESOURCE_DEFINE(diagnosticsResource, sensoryshield_thread_rest, "/api/diagnostics", &diagnosticsDetail);
 HTTP_RESOURCE_DEFINE(resetResource, sensoryshield_thread_rest, "/api/factory-reset", &resetDetail);
@@ -496,8 +560,8 @@ int ThreadRest::HandleModeCommand(ControlMode mode, uint32_t overrideDurationMin
     return GetSystem()->SetMode(mode, overrideDurationMinutes * 60000U);
 }
 
-int ThreadRest::HandleProfileUpdate(const AppConfig& config) {
-    return GetSystem()->UpdateConfig(config);
+int ThreadRest::HandleProfileUpdate(const AppConfig& config, bool useMeasuredEnvironment) {
+    return GetSystem()->UpdateConfig(config, useMeasuredEnvironment);
 }
 
 int ThreadRest::HandleFactoryReset() {
@@ -568,9 +632,9 @@ int ThreadRest::BuildProfileJson(char* buffer, size_t bufferSize) const {
     const int written = snprintf(buffer, bufferSize,
                                  "{\"lightWeight\":%s,\"soundWeight\":%s,\"minBrightness\":%u,"
                                  "\"maxBrightness\":%u,\"minCCTMireds\":%u,\"maxCCTMireds\":%u,"
-                                 "\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u,\"profileConfigured\":%s}",
+                                 "\"preferredCCTMireds\":%u,\"preferredBrightness\":%u,\"preferredFanPercent\":%u,\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u,\"profileConfigured\":%s}",
                                  lightWeight, soundWeight, config.minBrightness, config.maxBrightness,
-                                 config.minCCTMireds, config.maxCCTMireds, config.fanMaxPercent, config.occupancyTimeoutMs,
+                                 config.minCCTMireds, config.maxCCTMireds, config.preferredCCTMireds, config.preferredBrightness, config.preferredFanPercent, config.fanMaxPercent, config.occupancyTimeoutMs,
                                  config.profileConfigured ? "true" : "false");
     return (written < 0 || static_cast<size_t>(written) >= bufferSize) ? -ENOMEM : 0;
 }
@@ -600,13 +664,38 @@ int ThreadRest::BuildDiagnosticsJson(char* buffer, size_t bufferSize) const {
                  "\"matter\":{\"commissioned\":%s,\"fabricCount\":%u,\"threadAttached\":%s},"
                  "\"profile\":{\"lightWeight\":%s,\"soundWeight\":%s,\"minBrightness\":%u,"
                  "\"maxBrightness\":%u,\"minCCTMireds\":%u,\"maxCCTMireds\":%u,"
-                 "\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u,\"profileConfigured\":%s}}",
+                 "\"preferredCCTMireds\":%u,\"preferredBrightness\":%u,\"preferredFanPercent\":%u,\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u,\"profileConfigured\":%s}}",
                  APP_NAME, k_uptime_get_32() / 1000U, snapshot.illuminanceValid ? "true" : "false",
                  snapshot.micValid ? "true" : "false", snapshot.pirValid ? "true" : "false",
                  GetMatterBridge()->Commissioned() ? "true" : "false", GetMatterBridge()->FabricCount(),
                  GetMatterBridge()->ThreadAttached() ? "true" : "false", lightWeight, soundWeight,
                  config.minBrightness, config.maxBrightness, config.minCCTMireds, config.maxCCTMireds,
-                 config.fanMaxPercent, config.occupancyTimeoutMs, config.profileConfigured ? "true" : "false");
+                 config.preferredCCTMireds, config.preferredBrightness, config.preferredFanPercent, config.fanMaxPercent, config.occupancyTimeoutMs, config.profileConfigured ? "true" : "false");
 
     return (written < 0 || static_cast<size_t>(written) >= bufferSize) ? -ENOMEM : 0;
+}
+
+int ThreadRest::BuildMeasurementJson(char* buffer, size_t bufferSize) const {
+    const auto measurement = GetSystem()->Measurement();
+    const auto& data = measurement.Data();
+    RollingBaseline lux, sound;
+    for (uint32_t i = 0; i < data.count; ++i) { lux.Add(data.lux[i]); sound.Add(data.sound[i]); }
+    char luxMedian[20], luxMad[20], soundMedian[20], soundMad[20];
+    if (FormatFixed(luxMedian, sizeof(luxMedian), lux.Median(), 10, 1) ||
+        FormatFixed(luxMad, sizeof(luxMad), lux.Mad(0), 10, 1) ||
+        FormatFixed(soundMedian, sizeof(soundMedian), sound.Median(), 1000000, 6) ||
+        FormatFixed(soundMad, sizeof(soundMad), sound.Mad(0), 1000000, 6)) return -ENOMEM;
+    const InitialEnvironment saved = GetMemory()->InitialBaseline();
+    RollingBaseline savedLux, savedSound;
+    saved.Seed(savedLux, savedSound);
+    char savedLuxMedian[20], savedSoundMedian[20];
+    if (FormatFixed(savedLuxMedian, sizeof(savedLuxMedian), savedLux.Median(), 10, 1) ||
+        FormatFixed(savedSoundMedian, sizeof(savedSoundMedian), savedSound.Median(), 1000000, 6)) return -ENOMEM;
+    const char* states[] = {"idle", "collecting", "ready", "error"};
+    const int written = snprintf(buffer, bufferSize,
+        "{\"state\":\"%s\",\"samples\":%u,\"requiredSamples\":%u,\"luxMedian\":%s,\"luxMad\":%s,"
+        "\"soundMedian\":%s,\"soundMad\":%s,\"hasSavedInitialEnvironment\":%s,\"savedLuxMedian\":%s,\"savedSoundMedian\":%s}",
+        states[static_cast<unsigned int>(measurement.State())], data.count, ENVIRONMENT_SAMPLE_CAPACITY,
+        luxMedian, luxMad, soundMedian, soundMad, saved.Valid() ? "true" : "false", savedLuxMedian, savedSoundMedian);
+    return written < 0 || static_cast<size_t>(written) >= bufferSize ? -ENOMEM : 0;
 }

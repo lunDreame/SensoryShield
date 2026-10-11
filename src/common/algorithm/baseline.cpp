@@ -18,7 +18,7 @@ void RollingBaseline::Add(float value) {
 }
 
 bool RollingBaseline::Ready() const {
-    return mCount >= 5U;
+    return mCount >= BASELINE_CAPACITY;
 }
 
 float RollingBaseline::sortedAt(size_t index) const {

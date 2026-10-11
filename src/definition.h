@@ -3,7 +3,11 @@
 #include <stdint.h>
 
 #define APP_NAME "SensoryShield"
-#define CONFIG_VERSION 0x00040000
+#define LEGACY_CONFIG_VERSION 0x00040000
+#define PREVIOUS_CONFIG_VERSION 0x00050000
+#define SETUP_CONFIG_VERSION 0x00060000
+#define CONFIG_VERSION 0x00070000
+#define ENVIRONMENT_SAMPLE_CAPACITY 31
 
 #define SENSOR_PERIOD_MS 200
 #define ALGORITHM_PERIOD_MS 250
@@ -36,6 +40,9 @@ struct AppConfig {
     uint8_t fanMaxPercent = 100;
     uint32_t occupancyTimeoutMs = AUTO_OCCUPANCY_HOLD_MS;
     bool profileConfigured = false;
+    uint16_t preferredCCTMireds = 333;
+    uint8_t preferredBrightness = 100;
+    uint8_t preferredFanPercent = AUTO_FAN_NORMAL_PERCENT;
 };
 
 struct ChildDeviceDescriptor {
@@ -54,6 +61,20 @@ struct SoundFeatures {
     bool valid;
 };
 
+// Captured with the sensor read, not the later target requested by the controller.
+struct ObservedOutputs {
+    bool valid = false;
+    bool lightOn = false;
+    uint8_t brightness = 0;
+    uint16_t cct = 333;
+    bool rgb = false;
+    uint8_t red = 255, green = 255, blue = 255;
+    bool fanOn = false;
+    uint8_t fanPercent = 0;
+    bool lightSettled = true, fanSettled = true;
+    bool lightObservationConsistent = true;
+};
+
 struct SensorSnapshot {
     float lux;
     SoundFeatures sound;
@@ -62,6 +83,10 @@ struct SensorSnapshot {
     bool illuminanceValid;
     bool micValid;
     bool pirValid;
+    uint32_t observedAtMs = 0;
+    ObservedOutputs observedOutputs = {};
+    bool learnLight = true, learnSound = true;
+    bool controlInputsSettled = true;
 };
 
 struct ControlTarget {

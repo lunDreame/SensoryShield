@@ -12,6 +12,8 @@ LOG_MODULE_REGISTER(memory, LOG_LEVEL_INF);
 #define RUNTIME_STATE_KEY "sensoryshield/runtime_state"
 #define DEVICE_TABLE_KEY "sensoryshield/device_table"
 
+struct StoredSetup { AppConfig config; InitialEnvironment initial; };
+
 struct StoredDeviceTable {
     uint32_t version;
     uint8_t count;
@@ -53,9 +55,12 @@ static AppConfig NormalizeConfig(AppConfig config) {
     config.soundWeight = ClampValue(config.soundWeight, 0.0f, 1.0f);
     config.minBrightness = ClampValue<uint8_t>(config.minBrightness, 0, 100);
     config.maxBrightness = ClampValue<uint8_t>(config.maxBrightness, config.minBrightness, 100);
+    config.preferredBrightness = ClampValue<uint8_t>(config.preferredBrightness, config.minBrightness, config.maxBrightness);
     config.minCCTMireds = ClampValue<uint16_t>(config.minCCTMireds, 1, 1000);
     config.maxCCTMireds = ClampValue<uint16_t>(config.maxCCTMireds, config.minCCTMireds, 1000);
+    config.preferredCCTMireds = ClampValue<uint16_t>(config.preferredCCTMireds, config.minCCTMireds, config.maxCCTMireds);
     config.fanMaxPercent = ClampValue<uint8_t>(config.fanMaxPercent, 0, 100);
+    config.preferredFanPercent = ClampValue<uint8_t>(config.preferredFanPercent, 0, config.fanMaxPercent);
     if (config.occupancyTimeoutMs < 1000U) {
         config.occupancyTimeoutMs = AUTO_OCCUPANCY_HOLD_MS;
     }
@@ -92,39 +97,56 @@ int Memory::Initialize() {
         return ret;
     }
 
-    AppConfig loaded = {};
+    struct LoadContext { StoredSetup setup{}; bool read = false; } loaded;
     ret = settings_load_subtree_direct(
         APP_CONFIG_KEY,
-        [](const char* key, size_t len, settings_read_cb readCb, void* cbArg, void* param) {
+        [](const char* key, size_t len, settings_read_cb readCb, void* cbArg, void* param) -> int {
             ARG_UNUSED(key);
-            if (len != sizeof(AppConfig)) {
-                return -EINVAL;
-            }
-            return readCb(cbArg, param, len);
-        },
-        &loaded);
-
-    if (ret == 0 && loaded.version == CONFIG_VERSION) {
-        mConfig = NormalizeConfig(loaded);
-        LOG_INF("App config loaded");
-    } else {
-        LOG_INF("Default app config active");
+            auto* context = static_cast<LoadContext*>(param);
+            // v4/v5 records were 28 bytes. Their common fields retain their offsets.
+            if (len != 28U && len != sizeof(StoredSetup)) return -EINVAL;
+            const auto bytes = readCb(cbArg, &context->setup, len);
+            if (bytes != static_cast<ssize_t>(len)) return -EINVAL;
+            if (len == 28U && context->setup.config.version != LEGACY_CONFIG_VERSION &&
+                context->setup.config.version != PREVIOUS_CONFIG_VERSION) return -EINVAL;
+            context->read = true;
+            return 0;
+        }, &loaded);
+    auto& config = loaded.setup.config;
+    if (ret == 0 && loaded.read && (config.version == LEGACY_CONFIG_VERSION || config.version == PREVIOUS_CONFIG_VERSION)) {
+        if (config.version == LEGACY_CONFIG_VERSION) {
+            config.preferredCCTMireds = config.minCCTMireds <= config.maxCCTMireds
+                ? config.minCCTMireds + (config.maxCCTMireds - config.minCCTMireds) / 2U : config.minCCTMireds;
+        }
+        config.preferredBrightness = config.maxBrightness;
+        config.version = CONFIG_VERSION;
     }
+    if (ret == 0 && loaded.read && config.version == SETUP_CONFIG_VERSION) {
+        config.preferredFanPercent = AUTO_FAN_NORMAL_PERCENT;
+        config.version = CONFIG_VERSION;
+    }
+    mInitial = {};
+    if (ret == 0 && loaded.read && config.version == CONFIG_VERSION) {
+        mConfig = NormalizeConfig(config);
+        if (loaded.setup.initial.Valid()) mInitial = loaded.setup.initial;
+        LOG_INF("App config loaded");
+    } else LOG_INF("Default app config active");
 
     LOG_INF("ZMS ready");
     return 0;
 }
 
 int Memory::SaveConfig(const AppConfig& config) {
-    AppConfig next = NormalizeConfig(config);
-    const int ret = settings_save_one(APP_CONFIG_KEY, &next, sizeof(next));
-    if (ret != 0) {
-        LOG_ERR("Config save failed: %d", ret);
-        return ret;
-    }
+    return SaveSetup(config, mInitial);
+}
 
-    mConfig = next;
-    LOG_INF("App config saved");
+int Memory::SaveSetup(const AppConfig& config, const InitialEnvironment& initial) {
+    if (initial.count != 0 && !initial.Valid()) return -EINVAL;
+    StoredSetup next = {NormalizeConfig(config), initial};
+    // Preference and observations commit atomically in one settings record.
+    const int ret = settings_save_one(APP_CONFIG_KEY, &next, sizeof(next));
+    if (ret != 0) { LOG_ERR("Config save failed: %d", ret); return ret; }
+    mConfig = next.config; mInitial = next.initial;
     return 0;
 }
 
@@ -141,12 +163,13 @@ int Memory::LoadRuntimeState(ControlMode* mode, ControlTarget* target) {
             if (len != sizeof(StoredRuntimeState)) {
                 return -EINVAL;
             }
-            return readCb(cbArg, param, len);
+            return static_cast<int>(readCb(cbArg, param, len));
         },
         &state);
 
     const ControlMode storedMode = static_cast<ControlMode>(state.mode);
-    if (ret != 0 || state.version != CONFIG_VERSION || !IsValidMode(storedMode)) {
+    if (ret != 0 || (state.version != CONFIG_VERSION && state.version != LEGACY_CONFIG_VERSION && state.version != PREVIOUS_CONFIG_VERSION && state.version != SETUP_CONFIG_VERSION) ||
+        !IsValidMode(storedMode)) {
         if (ret == 0) {
             LOG_WRN("Stored runtime state is invalid, clearing");
             (void)settings_delete(RUNTIME_STATE_KEY);
@@ -197,11 +220,12 @@ int Memory::LoadDeviceTable(ChildDeviceDescriptor* devices, uint8_t maxDevices, 
             if (len != sizeof(StoredDeviceTable)) {
                 return -EINVAL;
             }
-            return readCb(cbArg, param, len);
+            return static_cast<int>(readCb(cbArg, param, len));
         },
         &table);
 
-    if (ret == 0 && table.version == CONFIG_VERSION && IsValidDeviceTable(table.devices, table.count)) {
+    if (ret == 0 && (table.version == CONFIG_VERSION || table.version == LEGACY_CONFIG_VERSION || table.version == PREVIOUS_CONFIG_VERSION || table.version == SETUP_CONFIG_VERSION) &&
+        IsValidDeviceTable(table.devices, table.count)) {
         *count = table.count > maxDevices ? maxDevices : table.count;
         memcpy(devices, table.devices, sizeof(ChildDeviceDescriptor) * (*count));
     } else {
@@ -252,6 +276,7 @@ int Memory::FactoryReset() {
     }
 
     mConfig = AppConfig{};
+    mInitial = {};
     LOG_INF("App storage reset");
     return 0;
 }

@@ -14,7 +14,8 @@ class ThreadRest final {
                            uint8_t green, uint8_t blue);
     int HandleFanCommand(bool on, uint8_t speedPercent);
     int HandleModeCommand(ControlMode mode, uint32_t overrideDurationMinutes = 15U);
-    int HandleProfileUpdate(const AppConfig& config);
+    int HandleProfileUpdate(const AppConfig& config, bool useMeasuredEnvironment = false);
+    int BuildMeasurementJson(char* buffer, size_t bufferSize) const;
     int HandleFactoryReset();
     int BuildStatusJson(char* buffer, size_t bufferSize) const;
     int BuildProfileJson(char* buffer, size_t bufferSize) const;

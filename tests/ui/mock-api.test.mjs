@@ -2,6 +2,9 @@ import assert from 'node:assert/strict';
 import { mockApi } from '../../frontend/dev/mock-api.mjs';
 import { Readable } from 'node:stream';
 let middleware;
+let now = Date.now();
+const realNow = Date.now;
+Date.now = () => now;
 mockApi().configureServer({middlewares:{use(fn){middleware=fn;}}});
 async function request(url, body) {
   const req=Readable.from(body ? [JSON.stringify(body)] : []);
@@ -11,10 +14,22 @@ async function request(url, body) {
   await middleware(req,res,()=>{throw Error('unexpected route');});
   return result;
 }
+const profile=(await request('/api/profile')).body;
+assert.equal(profile.preferredCCTMireds,333);
+for (const tone of [250,333,417]) {
+  assert.equal((await request('/api/profile',{...profile,preferredCCTMireds:tone})).status,200);
+  assert.equal((await request('/api/profile')).body.preferredCCTMireds,tone);
+  assert.equal((await request('/api/status')).body.outputs.cctMireds,profile.minCCTMireds);
+  await request('/__mock/scenario',{scenario:'noise'});
+  assert.equal((await request('/api/status')).body.outputs.cctMireds,tone);
+  await request('/__mock/scenario',{scenario:'normal'});
+}
+assert.equal((await request('/api/profile',{...profile,preferredCCTMireds:500})).status,400);
+await request('/api/profile',{...profile,preferredBrightness:60});
 const status=await request('/api/status');
-assert.equal(status.body.outputs.fanPercent,30);
+assert.equal(status.body.outputs.fanPercent,60);
 await request('/api/light',{power:true,brightness:45,cct:370});
-assert.equal((await request('/api/status')).body.outputs.fanPercent,30);
+assert.equal((await request('/api/status')).body.outputs.fanPercent,60);
 await request('/__mock/scenario',{scenario:'normal'});
 await request('/api/fan',{power:true,speed:60});
 assert.equal((await request('/api/status')).body.outputs.brightnessPercent,60);
@@ -28,7 +43,7 @@ assert.equal((await request('/api/mode',{mode:'OVERRIDE',durationMinutes:0})).st
 await request('/api/fan',{power:false,speed:0});
 assert.equal((await request('/api/status')).body.outputs.fanOn,false);
 await request('/__mock/scenario',{scenario:'noise'});
-assert.equal((await request('/api/status')).body.outputs.fanPercent,18);
+assert.equal((await request('/api/status')).body.outputs.fanPercent,20);
 await request('/__mock/scenario',{scenario:'mic-error'});
 assert.equal((await request('/api/status')).body.sensor.micValid,false);
 await request('/__mock/scenario',{scenario:'vacant'});
@@ -40,5 +55,19 @@ assert.equal((await request('/api/status')).status,503);
 await request('/__mock/scenario',{scenario:'normal'});
 assert.equal((await request('/api/status')).status,200);
 await request('/api/profile',{fanMaxPercent:10});
-assert.equal((await request('/api/status')).body.outputs.fanPercent,0);
-console.log('Mock API scenarios passed');
+assert.equal((await request('/api/status')).body.outputs.fanPercent,10);
+await request('/api/profile',{fanMaxPercent:100});
+assert.equal((await request('/api/profile',{preferredBrightness:101})).status,400);
+// Setup no longer measures or previews outputs. It preserves normal-output settings.
+const before = (await request('/api/profile')).body;
+assert.equal((await request('/api/profile',{...before,lightWeight:.8,soundWeight:.75,preferredCCTMireds:417,profileConfigured:true})).status,200);
+assert.equal((await request('/api/profile')).body.preferredBrightness,before.preferredBrightness);
+assert.equal((await request('/api/profile')).body.preferredFanPercent,before.preferredFanPercent);
+assert.equal((await request('/api/profile',{...before,useMeasuredEnvironment:true})).status,400);
+await request('/__mock/scenario',{scenario:'noise'});
+assert.equal((await request('/api/status')).body.outputs.cctMireds,417);
+assert.ok((await request('/api/status')).body.outputs.brightnessPercent < before.preferredBrightness);
+await request('/__mock/scenario',{scenario:'normal'});
+assert.equal((await request('/api/status')).body.outputs.cctMireds,before.minCCTMireds);
+Date.now = realNow;
+console.log('Mock API scenarios, sensitivity/tone-only setup, normal output preservation and relief tone passed');

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "definition.h"
+#include "common/algorithm/environment_measurement.h"
 
 class Memory final {
   public:
@@ -11,6 +12,8 @@ class Memory final {
         return mConfig;
     }
     int SaveConfig(const AppConfig& config);
+    int SaveSetup(const AppConfig& config, const InitialEnvironment& initial);
+    const InitialEnvironment& InitialBaseline() const { return mInitial; }
     int LoadRuntimeState(ControlMode* mode, ControlTarget* target);
     int SaveRuntimeState(ControlMode mode, const ControlTarget& target);
     int LoadDeviceTable(ChildDeviceDescriptor* devices, uint8_t maxDevices, uint8_t* count);
@@ -25,6 +28,7 @@ class Memory final {
     ~Memory() = default;
 
     AppConfig mConfig = {};
+    InitialEnvironment mInitial = {};
 };
 
 inline Memory* GetMemory() {

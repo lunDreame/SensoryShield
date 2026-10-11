@@ -32,7 +32,7 @@ export function DashboardPage({ status, updatedAt, connectionError }: DashboardP
         </div>
         <div>
           <div className="score-number"><strong>{scoreReady ? score!.toFixed(1) : "--"}</strong><span className="score-unit">{scoreReady ? `/ ${STIMULUS_MAX_SCORE}` : ""}</span></div>
-          <p className="score-description">{!status.system.ready ? "기기 연결 후 확인할 수 있어요." : !scoreReady ? "센서값을 확인해 주세요." : status.sensor.baselineReady === false ? "현재 환경을 초기 비교 기준으로 사용하고 있어요." : score! < STIMULUS_CHANGE_THRESHOLD ? "현재 공간이 차분해요." : score! < STIMULUS_STRONG_THRESHOLD ? "공간에 변화가 있어요." : "빛이나 소리가 평소보다 강해요."}</p>
+          <p className="score-description">{!status.system.ready ? "기기 연결 후 확인할 수 있어요." : !scoreReady ? "센서값을 확인해 주세요." : status.sensor.baselineReady === false ? "평소 환경을 학습하며 빛과 소리 변화를 살펴봐요." : score! < STIMULUS_CHANGE_THRESHOLD ? "빛과 소리의 변화가 작아요." : score! < STIMULUS_STRONG_THRESHOLD ? "공간에 변화가 있어요." : "빛이나 소리가 평소보다 강해요."}</p>
           <div className="score-track"><span style={{ width: `${scoreReady ? Math.min(100, Math.max(0, score! / STIMULUS_MAX_SCORE * 100)) : 0}%` }} /></div>
         </div>
       </section>

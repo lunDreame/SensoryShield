@@ -59,6 +59,18 @@ const uint8_t kSensoryStatusData[] = {
 const uint8_t kSoftLightData[] = {
 #include "soft_light_png.inc"
 };
+const uint8_t kFeedbackTooBrightData[] = {
+#include "feedback_too_bright_png.inc"
+};
+const uint8_t kFeedbackTooDarkData[] = {
+#include "feedback_too_dark_png.inc"
+};
+const uint8_t kFeedbackTooLoudData[] = {
+#include "feedback_too_loud_png.inc"
+};
+const uint8_t kFeedbackTooQuietData[] = {
+#include "feedback_too_quiet_png.inc"
+};
 
 }  // namespace
 
@@ -79,3 +91,7 @@ extern const StaticAsset kAppModeControl{kModeControlData, sizeof(kModeControlDa
 extern const StaticAsset kAppQuietSound{kQuietSoundData, sizeof(kQuietSoundData)};
 extern const StaticAsset kAppSensoryStatus{kSensoryStatusData, sizeof(kSensoryStatusData)};
 extern const StaticAsset kAppSoftLight{kSoftLightData, sizeof(kSoftLightData)};
+extern const StaticAsset kAppFeedbackTooBright{kFeedbackTooBrightData, sizeof(kFeedbackTooBrightData)};
+extern const StaticAsset kAppFeedbackTooDark{kFeedbackTooDarkData, sizeof(kFeedbackTooDarkData)};
+extern const StaticAsset kAppFeedbackTooLoud{kFeedbackTooLoudData, sizeof(kFeedbackTooLoudData)};
+extern const StaticAsset kAppFeedbackTooQuiet{kFeedbackTooQuietData, sizeof(kFeedbackTooQuietData)};

@@ -27,7 +27,7 @@ StimulusScore StimulusScorer::Evaluate(const SensorSnapshot& snapshot, const App
     if (validLux) {
         lightResidual = PositiveResidual(mLuxBaseline, snapshot.lux, LuxNoiseFloor);
         // Learn normal or darker conditions, while keeping sustained bright input visible as a stimulus.
-        if (!mLuxBaseline.Ready() || lightResidual <= BaselineLearningLimit) {
+        if (snapshot.learnLight && (!mLuxBaseline.Ready() || lightResidual <= BaselineLearningLimit)) {
             mLuxBaseline.Add(snapshot.lux);
         }
     }
@@ -38,7 +38,7 @@ StimulusScore StimulusScorer::Evaluate(const SensorSnapshot& snapshot, const App
     if (validSound) {
         soundResidual = PositiveResidual(mSoundBaseline, snapshot.sound.energy, SoundNoiseFloor);
         // Sustained noise must not disappear into the learned quiet baseline.
-        if (!mSoundBaseline.Ready() || soundResidual <= BaselineLearningLimit) {
+        if (snapshot.learnSound && (!mSoundBaseline.Ready() || soundResidual <= BaselineLearningLimit)) {
             mSoundBaseline.Add(snapshot.sound.energy);
         }
     }

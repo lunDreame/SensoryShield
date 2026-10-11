@@ -1,7 +1,7 @@
 import { displayedStimulusScore, STIMULUS_CHANGE_THRESHOLD, STIMULUS_STRONG_THRESHOLD } from "../../shared/lib/stimulus-score";
-import { useState } from "react";
-import { setFan, setLight, setMode } from "../../shared/api/client";
-import { formatDurationMinutes } from "../../shared/lib/duration";
+import { useRef, useState } from "react";
+import { getStatus, getProfile, setFan, setLight, setMode } from "../../shared/api/client";
+import { applyChildComfort, type ComfortAction } from "../../shared/lib/child-control";
 import type { StatusResponse } from "../../shared/types/domain";
 
 interface ChildModePageProps {
@@ -9,67 +9,43 @@ interface ChildModePageProps {
   connectionError: boolean;
 }
 
-type ComfortAction = "BRIGHT" | "LOUD" | "COMFORTABLE";
-
-const durations = [
-  { minutes: 10, label: "잠깐" },
-  { minutes: 30, label: "조금 오래" },
-  { minutes: 60, label: "오래" }
-] as const;
+const actions: Array<{ action: ComfortAction; label: string; description: string; icon: string; style: string }> = [
+  { action: "BRIGHT", label: "너무 밝아요", description: "조명을 조금 낮춰요", icon: "feedback-too-bright", style: "light" },
+  { action: "DARK", label: "너무 어두워요", description: "조명을 조금 밝혀요", icon: "feedback-too-dark", style: "dark" },
+  { action: "LOUD", label: "너무 시끄러워요", description: "조명과 팬 세기를 낮춰요", icon: "feedback-too-loud", style: "sound" },
+  { action: "QUIET", label: "너무 조용해요", description: "팬을 켜거나 조금 높여요", icon: "feedback-too-quiet", style: "quiet" }
+];
 
 function roomMessage(status: StatusResponse) {
   if (!status.system.ready) return "기기를 기다리고 있어요";
-  if (status.sensor.baselineReady !== true) return "지금 방을 기준으로 변화를 살펴봐요";
+  if (status.system.mode === "SAFE") return "보호자의 확인이 필요해요";
+  if (status.sensor.baselineReady !== true) return "평소 환경을 익히며 빛과 소리 변화를 살펴봐요";
   const score = displayedStimulusScore(status.sensor.sensoryScore);
   if (score === null) return "방의 상태를 확인하고 있어요";
   if (!status.sensor.occupied) return "방이 쉬고 있어요";
-  if (score < STIMULUS_CHANGE_THRESHOLD) return "지금 방은 편안해요";
+  if (score < STIMULUS_CHANGE_THRESHOLD) return "지금 방의 변화가 작아요";
   if (score < STIMULUS_STRONG_THRESHOLD) return "방에 조금 변화가 있어요";
   return "빛이나 소리가 강해졌어요";
 }
 
 export function ChildModePage({ status, connectionError }: ChildModePageProps) {
-  const [durationMinutes, setDurationMinutes] = useState<number>(30);
+  const activeRequest = useRef(false);
   const [pending, setPending] = useState<ComfortAction | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function apply(action: ComfortAction) {
-    if (!status.system.ready || pending) return;
+    if (!status.system.ready || status.system.mode === "SAFE" || connectionError || activeRequest.current) return;
+    activeRequest.current = true;
     setPending(action);
     setMessage(null);
     setError(null);
-
     try {
-      if (action === "COMFORTABLE") {
-        const result = await setMode("AUTO");
-        if (!result.ok) throw new Error("rejected");
-        setMessage("좋아요. 나에게 맞는 자동 환경으로 돌아갈게요.");
-        return;
-      }
-
-      const brightness = action === "BRIGHT"
-        ? Math.min(status.outputs.brightnessPercent || 32, 32)
-        : Math.min(status.outputs.brightnessPercent || 38, 38);
-      const lightResult = await setLight({ power: true, brightness, cct: 417 });
-      if (!lightResult.ok) throw new Error("rejected");
-
-      if (action === "LOUD") {
-        const fanResult = await setFan({
-          power: status.outputs.fanOn,
-          speed: status.outputs.fanOn ? Math.min(status.outputs.fanPercent, 18) : 0
-        });
-        if (!fanResult.ok) throw new Error("rejected");
-      }
-
-      const modeResult = await setMode("OVERRIDE", durationMinutes);
-      if (!modeResult.ok) throw new Error("rejected");
-      setMessage(action === "BRIGHT"
-        ? `조명을 천천히 낮추고 따뜻하게 바꿀게요. ${formatDurationMinutes(durationMinutes)} 뒤 자동으로 돌아가요.`
-        : `조명을 편안하게 바꾸고 팬 소리를 줄일게요. ${formatDurationMinutes(durationMinutes)} 뒤 자동으로 돌아가요.`);
-    } catch {
-      setError("지금은 기기에 알려주지 못했어요. 연결을 확인하고 다시 눌러주세요.");
+      setMessage(await applyChildComfort(action, { getStatus, getProfile, setLight, setFan, setMode }));
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "기기에 알려주지 못했어요. 연결을 확인해 주세요.");
     } finally {
+      activeRequest.current = false;
       setPending(null);
     }
   }
@@ -78,8 +54,8 @@ export function ChildModePage({ status, connectionError }: ChildModePageProps) {
     <main className="child-page">
       <section className="child-comfort-card" aria-labelledby="child-room-title">
         <span className="child-kicker">우리 집</span>
-        <h1 id="child-room-title">{roomMessage(status)}</h1>
-        <p>{status.system.ready ? status.sensor.baselineReady === false ? "지금 방의 밝기와 소리를 기준으로 사용하고, 지내면서 기준을 자동으로 바꿔요. 불편하면 아래에서 알려주세요." : "불편한 것이 있다면 아래에서 알려주세요." : connectionError ? "기기 연결을 확인해 주세요." : "연결되면 방의 상태를 알려드릴게요."}</p>
+        <h1 id="child-room-title">{connectionError ? "기기 연결을 확인해 주세요" : roomMessage(status)}</h1>
+        <p>{connectionError ? "연결되면 다시 알려줄 수 있어요." : status.system.ready ? status.system.mode === "SAFE" ? "보호자에게 기기 상태를 확인해 달라고 해주세요." : status.sensor.baselineReady === false ? "평소 환경을 익히며 빛과 소리 변화를 살펴봐요. 불편하면 아래에서 알려주세요." : "불편하면 아래에서 알려주세요." : "연결되면 방의 상태를 알려드릴게요."}</p>
         <div className={`child-room-orb${status.system.ready && status.sensor.baselineReady === true && (displayedStimulusScore(status.sensor.sensoryScore) ?? 0) >= STIMULUS_STRONG_THRESHOLD ? " is-strong" : ""}`} aria-hidden="true">
           <img src="/illustrations/child-at-home.png" alt="" />
         </div>
@@ -91,41 +67,15 @@ export function ChildModePage({ status, connectionError }: ChildModePageProps) {
             <span className="child-kicker">지금 느끼는 것</span>
             <h2 id="child-choice-title">어떻게 느껴지나요?</h2>
           </div>
-          <div className="child-duration" aria-label="편안한 환경 유지 시간">
-            <span>얼마 동안 편하게 할까요?</span>
-            <div>
-              {durations.map((duration) => (
-                <button className={durationMinutes === duration.minutes ? "active" : ""} type="button"
-                  aria-pressed={durationMinutes === duration.minutes} onClick={() => setDurationMinutes(duration.minutes)} key={duration.minutes}>
-                  <span className="duration-clock" aria-hidden="true">
-                    <svg viewBox="0 0 24 24" fill="none">
-                      <circle cx="12" cy="12" r="8.5" />
-                      <path d="M12 7.5v5l3.25 2" />
-                    </svg>
-                  </span>
-                  <span><b>{duration.label}</b><small>{duration.minutes === 60 ? "1시간" : `${duration.minutes}분`}</small></span>
-                  <span className="duration-check" aria-hidden="true">
-                    <svg viewBox="0 0 16 16" fill="none"><path d="m4 8.2 2.4 2.4L12 5.4" /></svg>
-                  </span>
-                </button>
-              ))}
-            </div>
-          </div>
+
         </div>
 
-        <div className="child-choice-grid">
-          <button className="child-choice child-choice-light" type="button" disabled={!status.system.ready || pending !== null} onClick={() => void apply("BRIGHT")}>
-            <span className="child-choice-icon" aria-hidden="true"><img src="/illustrations/soft-light.png" alt="" /></span>
-            <span><b>{pending === "BRIGHT" ? "바꾸는 중이에요" : "너무 밝아요"}</b><small>빛을 낮추고 따뜻하게</small></span>
-          </button>
-          <button className="child-choice child-choice-sound" type="button" disabled={!status.system.ready || pending !== null} onClick={() => void apply("LOUD")}>
-            <span className="child-choice-icon" aria-hidden="true"><img src="/illustrations/quiet-sound.png" alt="" /></span>
-            <span><b>{pending === "LOUD" ? "바꾸는 중이에요" : "너무 시끄러워요"}</b><small>빛과 팬 소리를 편안하게</small></span>
-          </button>
-          <button className="child-choice child-choice-good" type="button" disabled={!status.system.ready || pending !== null} onClick={() => void apply("COMFORTABLE")}>
-            <span className="child-choice-icon" aria-hidden="true"><img src="/illustrations/comfortable-home.png" alt="" /></span>
-            <span><b>{pending === "COMFORTABLE" ? "돌아가는 중이에요" : "지금 좋아요"}</b><small>나에게 맞는 자동 환경으로</small></span>
-          </button>
+        <div className="child-choice-grid" aria-busy={pending !== null}>
+          {actions.map(option => <button className={`child-choice child-choice-${option.style}`} type="button"
+            disabled={!status.system.ready || status.system.mode === "SAFE" || connectionError || pending !== null} onClick={() => void apply(option.action)} key={option.action}>
+            <span className="child-choice-icon" aria-hidden="true"><img src={`/illustrations/${option.icon}.png`} alt="" /></span>
+            <span><b>{pending === option.action ? "바꾸는 중이에요" : option.label}</b><small>{option.description}</small></span>
+          </button>)}
         </div>
 
         {message ? <div className="child-feedback" role="status"><span>✓</span>{message}</div> : null}

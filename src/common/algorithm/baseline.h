@@ -1,9 +1,10 @@
 #pragma once
 
+#include "definition.h"
 #include <stddef.h>
 #include <stdint.h>
 
-#define BASELINE_CAPACITY 31
+#define BASELINE_CAPACITY ENVIRONMENT_SAMPLE_CAPACITY
 
 class RollingBaseline final {
   public:
