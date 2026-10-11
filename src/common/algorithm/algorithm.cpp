@@ -14,6 +14,8 @@ int Algorithm::Initialize(const AppConfig& config) {
     SetConfig(config);
     mStimulusScorer.Reset();
     mSoundFan.Reset();
+    mOutputAware.Reset();
+    mLightPresence.Reset();
     mPreviousTarget = {false, config.minBrightness, config.maxCCTMireds, false, 255, 255, 255, false, 0, 0.0f};
     LOG_INF("Algorithm ready");
     return 0;
@@ -24,11 +26,12 @@ void Algorithm::SetConfig(const AppConfig& config) {
 }
 
 StimulusScore Algorithm::EvaluateEnvironment(const SensorSnapshot& snapshot) {
-    return mStimulusScorer.Evaluate(snapshot, mConfig);
+    mObserved = mOutputAware.Observe(snapshot);
+    return mStimulusScorer.Evaluate(mObserved, mConfig);
 }
 
 ControlTarget Algorithm::Evaluate(const SensorSnapshot& snapshot, const StimulusScore& stimulus) {
-    SensorSnapshot effectiveSnapshot = snapshot;
+    SensorSnapshot effectiveSnapshot = snapshot.observedOutputs.valid ? mObserved : snapshot;
     const uint32_t now = k_uptime_get_32();
     if (snapshot.pirValid && !snapshot.occupied && snapshot.lastMotionMs != 0U &&
         (now - snapshot.lastMotionMs) <= mConfig.occupancyTimeoutMs) {
@@ -37,7 +40,7 @@ ControlTarget Algorithm::Evaluate(const SensorSnapshot& snapshot, const Stimulus
 
     ControlTarget target = mPreviousTarget;
     target.sensoryScore = stimulus.combined;
-    const LightTarget light = mLightPresence.Evaluate(effectiveSnapshot, mConfig, stimulus.combined);
+    const LightTarget light = mLightPresence.Evaluate(effectiveSnapshot, mConfig, stimulus.combined, now);
     const uint8_t fanPercent = mSoundFan.Evaluate(effectiveSnapshot, mConfig, now);
 
     target.lightOn = light.on;

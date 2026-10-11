@@ -7,8 +7,12 @@ export function mockApi() {
   let overrideUntil = 0;
   const started = Date.now();
   let profile = { lightWeight: 0.55, soundWeight: 0.45, minBrightness: 1, maxBrightness: 100,
-    minCCTMireds: 250, maxCCTMireds: 454, fanMaxPercent: 100, occupancyTimeoutMs: 30000,
+    minCCTMireds: 250, maxCCTMireds: 454, preferredCCTMireds: 333, preferredBrightness: 100, preferredFanPercent: 60, fanMaxPercent: 100, occupancyTimeoutMs: 30000,
     profileConfigured: false };
+  let initialEnvironment = null;
+  let measurement = {state:"idle",samples:0,requiredSamples:31,luxMedian:0,luxMad:0,soundMedian:0,soundMad:0};
+  let measurementStarted = 0;
+  let measuredLight = null;
   const scenarios = ["normal", "warming-up", "noise", "impulse", "mic-error", "vacant", "offline", "command-error"];
   const panel = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>Mock 시나리오</title>
   <body style="font:18px system-ui;max-width:700px;margin:50px auto;padding:20px"><h1>UI 시험 시나리오</h1>
@@ -50,25 +54,69 @@ export function mockApi() {
         const micError = scenario === "mic-error";
         const vacant = scenario === "vacant";
         const impulse = scenario === "impulse" && Math.floor(Date.now()/1500)%4 === 0;
-        const autoSpeed = vacant || profile.fanMaxPercent === 0 ? 0 : Math.min(profile.fanMaxPercent, noise || micError ? 20 : 60);
+        const autoCct = noise || impulse ? profile.preferredCCTMireds : profile.minCCTMireds;
+        const autoBrightness = vacant ? 0 : noise ? Math.round(profile.preferredBrightness - (profile.preferredBrightness - profile.minBrightness) * .75) : profile.preferredBrightness;
+        const autoSpeed = vacant || profile.fanMaxPercent === 0 ? 0 : Math.min(profile.fanMaxPercent, noise || micError ? Math.min(20, profile.preferredFanPercent) : profile.preferredFanPercent);
+        if (measurement.state === "collecting") {
+          if (Date.now() - measurementStarted >= 15000 && micError) measurement.state = "error";
+          else if (!micError) {
+            measurement.samples = Math.min(31, Math.floor((Date.now()-measurementStarted)/200));
+            measurement.luxMedian = 100 + measuredLight.brightnessPercent * .5;
+            measurement.luxMad = .5; measurement.soundMedian = noise ? .15 : .01; measurement.soundMad = .001;
+            if (measurement.samples === 31) measurement.state = "ready";
+          }
+        }
+        if (path === "/api/environment-measurement") {
+          if (req.method === "POST") {
+            if (body.action === "start" && mode !== "SAFE") {
+              measurement = {state:"collecting",samples:0,requiredSamples:31,luxMedian:0,luxMad:0,soundMedian:0,soundMad:0};
+              if (mode !== "MANUAL" && mode !== "OVERRIDE") {
+                manualLight={lightOn:!vacant && profile.preferredBrightness > 0,brightnessPercent:autoBrightness,cctMireds:autoCct,rgbMode:false,red:255,green:255,blue:255};
+                manualFan={fanOn:autoSpeed>0,fanPercent:autoSpeed};
+              }
+              mode = "MANUAL";
+              measurementStarted = Date.now(); measuredLight = {...manualLight};
+            } else if (body.action === "cancel") measurement.state = "idle";
+            else {send(400,{ok:false});return;}
+          }
+          send(200,{...measurement,hasSavedInitialEnvironment:!!initialEnvironment,savedLuxMedian:initialEnvironment?.luxMedian ?? 0,savedSoundMedian:initialEnvironment?.soundMedian ?? 0});return;
+        }
         if (path === "/api/profile") {
-          if (req.method === "POST") profile = {...profile, ...body};
+          if (req.method === "POST") {
+            const next = {...profile, ...body};
+            if (!Number.isInteger(next.preferredCCTMireds) || next.preferredCCTMireds < next.minCCTMireds || next.preferredCCTMireds > next.maxCCTMireds) {
+              send(400, {ok:false}); return;
+            }
+            if (!Number.isInteger(next.preferredBrightness) || next.preferredBrightness < next.minBrightness || next.preferredBrightness > next.maxBrightness) {
+              send(400,{ok:false});return;
+            }
+            if (body.preferredFanPercent !== undefined && (!Number.isInteger(next.preferredFanPercent) || next.preferredFanPercent < 0 || next.preferredFanPercent > next.fanMaxPercent)) {
+              send(400,{ok:false});return;
+            }
+            next.preferredFanPercent = Math.min(next.fanMaxPercent, next.preferredFanPercent);
+            if (body.useMeasuredEnvironment) { send(400,{ok:false}); return; }
+            delete next.useMeasuredEnvironment;
+            profile = next;
+          }
           send(200,req.method === "POST" ? {ok:true} : profile);return;
         }
         if (path === "/api/mode") {
           if (!["AUTO","MANUAL","OVERRIDE","SAFE"].includes(body.mode)) {send(400,{ok:false});return;}
           if (body.mode === "OVERRIDE" && (!Number.isInteger(body.durationMinutes) || body.durationMinutes < 1 || body.durationMinutes > 1440)) {send(400,{ok:false});return;}
+          if (body.mode !== "MANUAL" && measurement.state === "collecting") measurement.state="error";
           mode=body.mode;overrideUntil=Date.now()+(body.durationMinutes ?? 15)*60000;send(200,{ok:true});return;
         }
         if (path === "/api/fan") {
+          if (measurement.state === "collecting") measurement.state="error";
           if (mode !== "MANUAL" && mode !== "OVERRIDE") {
-            manualLight={lightOn:!vacant,brightnessPercent:vacant?0:60,cctMireds:370,rgbMode:false,red:255,green:255,blue:255};
+            manualLight={lightOn:!vacant && profile.preferredBrightness > 0,brightnessPercent:autoBrightness,cctMireds:autoCct,rgbMode:false,red:255,green:255,blue:255};
           }
           const speed = Math.min(profile.fanMaxPercent, Math.max(0,body.speed));
           manualFan={fanOn:body.power && speed>0,fanPercent:body.power ? speed : 0};
           mode="MANUAL";send(200,{ok:true});return;
         }
         if (path === "/api/light") {
+          if (measurement.state === "collecting") measurement.state="error";
           if (mode !== "MANUAL" && mode !== "OVERRIDE") {
             manualFan={fanOn:autoSpeed>0,fanPercent:autoSpeed};
           }
@@ -81,7 +129,7 @@ export function mockApi() {
             baselineReady:scenario !== "warming-up" && !micError,sensoryScore:noise || impulse ? 3 : 0.4,illuminanceValid:true,micValid:!micError,pirValid:true},
           outputs: mode === "MANUAL" || mode === "OVERRIDE" ? {...manualLight,...manualFan} : mode === "SAFE" ?
             {lightOn:false,brightnessPercent:0,cctMireds:370,rgbMode:false,red:255,green:255,blue:255,fanOn:false,fanPercent:0} :
-            {lightOn:!vacant,brightnessPercent:vacant?0:60,cctMireds:370,rgbMode:false,red:255,green:255,blue:255,fanOn:autoSpeed>0,fanPercent:autoSpeed},
+            {lightOn:!vacant && profile.preferredBrightness > 0,brightnessPercent:autoBrightness,cctMireds:autoCct,rgbMode:false,red:255,green:255,blue:255,fanOn:autoSpeed>0,fanPercent:autoSpeed},
           system:{ready:true,mode,overrideRemainingSeconds:mode === "OVERRIDE" ? Math.max(0,Math.ceil((overrideUntil-Date.now())/1000)) : 0,
             uptimeSeconds:Math.floor((Date.now()-started)/1000),firmware:"mock-ui-fixtures",
             matter:{commissioned:false,fabricCount:0,threadAttached:false},storage:{appConfig:true,deviceTable:true}}

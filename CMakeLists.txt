@@ -14,6 +14,7 @@ find_program(NPM_EXECUTABLE npm REQUIRED HINTS /opt/homebrew/bin)
 set(FRONTEND_DIR ${CMAKE_CURRENT_SOURCE_DIR}/frontend)
 file(GLOB_RECURSE FRONTEND_BUILD_INPUTS CONFIGURE_DEPENDS
     ${FRONTEND_DIR}/src/*
+    ${FRONTEND_DIR}/public/*
     ${FRONTEND_DIR}/index.html
     ${FRONTEND_DIR}/vite.config.ts
     ${FRONTEND_DIR}/package.json
@@ -59,6 +60,10 @@ generate_inc_file_for_target(app ${FRONTEND_ASSET_DIR}/illustrations/mode-contro
 generate_inc_file_for_target(app ${FRONTEND_ASSET_DIR}/illustrations/quiet-sound.png ${GENERATED_ASSET_DIR}/quiet_sound_png.inc)
 generate_inc_file_for_target(app ${FRONTEND_ASSET_DIR}/illustrations/sensory-status.png ${GENERATED_ASSET_DIR}/sensory_status_png.inc)
 generate_inc_file_for_target(app ${FRONTEND_ASSET_DIR}/illustrations/soft-light.png ${GENERATED_ASSET_DIR}/soft_light_png.inc)
+generate_inc_file_for_target(app ${FRONTEND_ASSET_DIR}/illustrations/feedback-too-bright.png ${GENERATED_ASSET_DIR}/feedback_too_bright_png.inc)
+generate_inc_file_for_target(app ${FRONTEND_ASSET_DIR}/illustrations/feedback-too-dark.png ${GENERATED_ASSET_DIR}/feedback_too_dark_png.inc)
+generate_inc_file_for_target(app ${FRONTEND_ASSET_DIR}/illustrations/feedback-too-loud.png ${GENERATED_ASSET_DIR}/feedback_too_loud_png.inc)
+generate_inc_file_for_target(app ${FRONTEND_ASSET_DIR}/illustrations/feedback-too-quiet.png ${GENERATED_ASSET_DIR}/feedback_too_quiet_png.inc)
 target_include_directories(app PRIVATE ${GENERATED_ASSET_DIR})
 
 target_include_directories(app PRIVATE src)

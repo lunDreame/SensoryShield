@@ -53,7 +53,23 @@ export interface AppConfig {
   maxBrightness: number;
   minCCTMireds: number;
   maxCCTMireds: number;
+  preferredCCTMireds: number;
+  preferredBrightness: number;
+  preferredFanPercent: number;
   fanMaxPercent: number;
   occupancyTimeoutMs: number;
   profileConfigured: boolean;
+}
+
+export interface EnvironmentMeasurement {
+  state: "idle" | "collecting" | "ready" | "error";
+  samples: number;
+  requiredSamples: number;
+  luxMedian: number;
+  luxMad: number;
+  soundMedian: number;
+  soundMad: number;
+  hasSavedInitialEnvironment: boolean;
+  savedLuxMedian: number;
+  savedSoundMedian: number;
 }

@@ -1,6 +1,7 @@
 #include "common/device/Light.h"
 
 #include "definition.h"
+#include "common/light_tone.h"
 #include "peripheral/WS2812B.h"
 #include "system/matter_bridge.h"
 #include "system/memory.h"
@@ -136,13 +137,5 @@ int LightDevice::ApplyTargetInternal(bool on, uint8_t brightnessPercent, uint16_
 }
 
 uint8_t LightDevice::MiredsToCoolPercent(uint16_t mireds) const {
-    const AppConfig config = GetMemory()->Config();
-    if (config.maxCCTMireds <= config.minCCTMireds) {
-        return 50;
-    }
-
-    const uint16_t clamped = ClampValue<uint16_t>(mireds, config.minCCTMireds, config.maxCCTMireds);
-    const uint16_t span = config.maxCCTMireds - config.minCCTMireds;
-    const uint16_t warmBias = clamped - config.minCCTMireds;
-    return static_cast<uint8_t>(100U - ((warmBias * 100U) / span));
+    return WhiteToneCoolPercent(mireds);
 }

@@ -11,7 +11,7 @@ SensorSnapshot Snapshot(float lux = 100.0f, float energy = 0.01f) {
 }
 
 void Warm(StimulusScorer& scorer, const AppConfig& config) {
-    for (int i = 0; i < 5; ++i) {
+    for (int i = 0; i < ENVIRONMENT_SAMPLE_CAPACITY; ++i) {
         scorer.Evaluate(Snapshot(), config);
     }
 }
@@ -24,9 +24,9 @@ int main() {
         StimulusScorer scorer;
         Warm(scorer, config);
         const StimulusScore brighter = scorer.Evaluate(Snapshot(150.0f), config);
-        assert(fabsf(brighter.light - 5.5f) < 0.001f);
+        assert(fabsf(brighter.light - 13.75f) < 0.001f);
         assert(brighter.sound == 0.0f);
-        assert(fabsf(brighter.combined - 5.5f) < 0.001f);
+        assert(brighter.combined == STIMULUS_MAX_SCORE);
 
         const StimulusScore darker = scorer.Evaluate(Snapshot(20.0f), config);
         assert(darker.light == 0.0f);
@@ -38,12 +38,12 @@ int main() {
         Warm(scorer, config);
         const StimulusScore louder = scorer.Evaluate(Snapshot(100.0f, 0.06f), config);
         assert(louder.light == 0.0f);
-        assert(fabsf(louder.sound - 4.5f) < 0.001f);
-        assert(fabsf(louder.combined - 4.5f) < 0.001f);
+        assert(fabsf(louder.sound - 9.0f) < 0.001f);
+        assert(louder.combined == STIMULUS_MAX_SCORE);
 
         for (int i = 0; i < 40; ++i) {
             const StimulusScore sustained = scorer.Evaluate(Snapshot(100.0f, 0.06f), config);
-            assert(fabsf(sustained.sound - 4.5f) < 0.001f);
+            assert(fabsf(sustained.sound - 9.0f) < 0.001f);
         }
     }
 
@@ -51,7 +51,7 @@ int main() {
         StimulusScorer scorer;
         Warm(scorer, config);
         const StimulusScore maximum = scorer.Evaluate(Snapshot(200.0f, 0.10f), config);
-        assert(maximum.combined == 8.0f);
+        assert(maximum.combined == STIMULUS_MAX_SCORE);
     }
 
     {
