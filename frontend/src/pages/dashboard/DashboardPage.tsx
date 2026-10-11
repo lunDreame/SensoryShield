@@ -1,3 +1,4 @@
+import { displayedStimulusScore, STIMULUS_MAX_SCORE, STIMULUS_CHANGE_THRESHOLD, STIMULUS_STRONG_THRESHOLD } from "../../shared/lib/stimulus-score";
 import { ModeSwitch } from "../../features/change-mode/ModeSwitch";
 import { WS2812BControl } from "../../widgets/ws2812b-control/WS2812BControl";
 import { EnvironmentSummary } from "../../widgets/environment-summary/EnvironmentSummary";
@@ -11,7 +12,8 @@ interface DashboardPageProps {
 }
 
 export function DashboardPage({ status, updatedAt, connectionError }: DashboardPageProps) {
-  const scoreReady = status.system.ready && (status.sensor.illuminanceValid || status.sensor.micValid);
+  const score = displayedStimulusScore(status.sensor.sensoryScore);
+  const scoreReady = score !== null && status.system.ready && (status.sensor.illuminanceValid || status.sensor.micValid);
   return (
     <main className="page-grid">
       <section className="overview">
@@ -29,9 +31,9 @@ export function DashboardPage({ status, updatedAt, connectionError }: DashboardP
           <span className="badge" style={{ background: "#ffffff26", color: "#fff" }}>{status.sensor.baselineReady === false ? "초기 비교 기준" : "현재"}</span>
         </div>
         <div>
-          <div className="score-number"><strong>{scoreReady ? status.sensor.sensoryScore.toFixed(1) : "--"}</strong><span className="score-unit">{scoreReady ? "/ 8" : ""}</span></div>
-          <p className="score-description">{!status.system.ready ? "기기 연결 후 확인할 수 있어요." : !scoreReady ? "센서값을 확인해 주세요." : status.sensor.baselineReady === false ? "현재 환경을 초기 비교 기준으로 사용하고 있어요." : status.sensor.sensoryScore < 2.8 ? "현재 공간이 차분해요." : status.sensor.sensoryScore < 5.6 ? "공간에 변화가 있어요." : "빛이나 소리가 평소보다 강해요."}</p>
-          <div className="score-track"><span style={{ width: `${scoreReady ? Math.min(100, Math.max(0, status.sensor.sensoryScore / 8 * 100)) : 0}%` }} /></div>
+          <div className="score-number"><strong>{scoreReady ? score!.toFixed(1) : "--"}</strong><span className="score-unit">{scoreReady ? `/ ${STIMULUS_MAX_SCORE}` : ""}</span></div>
+          <p className="score-description">{!status.system.ready ? "기기 연결 후 확인할 수 있어요." : !scoreReady ? "센서값을 확인해 주세요." : status.sensor.baselineReady === false ? "현재 환경을 초기 비교 기준으로 사용하고 있어요." : score! < STIMULUS_CHANGE_THRESHOLD ? "현재 공간이 차분해요." : score! < STIMULUS_STRONG_THRESHOLD ? "공간에 변화가 있어요." : "빛이나 소리가 평소보다 강해요."}</p>
+          <div className="score-track"><span style={{ width: `${scoreReady ? Math.min(100, Math.max(0, score! / STIMULUS_MAX_SCORE * 100)) : 0}%` }} /></div>
         </div>
       </section>
       <EnvironmentSummary sensor={status.sensor} />
