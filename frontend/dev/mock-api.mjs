@@ -9,7 +9,7 @@ export function mockApi() {
   let profile = { lightWeight: 0.55, soundWeight: 0.45, minBrightness: 1, maxBrightness: 100,
     minCCTMireds: 250, maxCCTMireds: 454, fanMaxPercent: 100, occupancyTimeoutMs: 30000,
     profileConfigured: false };
-  const scenarios = ["normal", "noise", "impulse", "mic-error", "vacant", "offline", "command-error"];
+  const scenarios = ["normal", "warming-up", "noise", "impulse", "mic-error", "vacant", "offline", "command-error"];
   const panel = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>Mock 시나리오</title>
   <body style="font:18px system-ui;max-width:700px;margin:50px auto;padding:20px"><h1>UI 시험 시나리오</h1>
   <p>실제 장치가 아닌 개발용 응답입니다. 알고리즘 검증은 C++ 시험으로 수행합니다.</p>
@@ -78,7 +78,7 @@ export function mockApi() {
         }
         const status = {
           sensor:{lux:180,occupied:!vacant,soundEnergy:micError ? 0 : noise || impulse ? 0.15 : 0.01,
-            sensoryScore:noise || impulse ? 6 : 0.4,illuminanceValid:true,micValid:!micError,pirValid:true},
+            baselineReady:scenario !== "warming-up" && !micError,sensoryScore:noise || impulse ? 6 : 0.4,illuminanceValid:true,micValid:!micError,pirValid:true},
           outputs: mode === "MANUAL" || mode === "OVERRIDE" ? {...manualLight,...manualFan} : mode === "SAFE" ?
             {lightOn:false,brightnessPercent:0,cctMireds:370,rgbMode:false,red:255,green:255,blue:255,fanOn:false,fanPercent:0} :
             {lightOn:!vacant,brightnessPercent:vacant?0:60,cctMireds:370,rgbMode:false,red:255,green:255,blue:255,fanOn:autoSpeed>0,fanPercent:autoSpeed},

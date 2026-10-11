@@ -5,6 +5,7 @@ export interface SensorStatus {
   occupied: boolean;
   soundEnergy: number;
   sensoryScore: number;
+  baselineReady?: boolean;
   illuminanceValid: boolean;
   micValid: boolean;
   pirValid: boolean;
