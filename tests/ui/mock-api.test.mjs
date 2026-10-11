@@ -69,5 +69,38 @@ assert.equal((await request('/api/status')).body.outputs.cctMireds,417);
 assert.ok((await request('/api/status')).body.outputs.brightnessPercent < before.preferredBrightness);
 await request('/__mock/scenario',{scenario:'normal'});
 assert.equal((await request('/api/status')).body.outputs.cctMireds,before.minCCTMireds);
+await request('/api/profile',{normalCCTMireds:370,reliefFanPercent:0,reliefHoldMs:10000,recoverConfirmMs:5000});
+const custom=(await request('/api/profile')).body;
+assert.equal(custom.normalCCTMireds,370); assert.equal(custom.reliefHoldMs,10000); assert.equal(custom.recoverConfirmMs,5000);
+assert.equal((await request('/api/status')).body.outputs.cctMireds,370);
+await request('/__mock/scenario',{scenario:'noise'});
+assert.equal((await request('/api/status')).body.outputs.fanPercent,0);
+assert.equal((await request('/api/status')).body.outputs.cctMireds,custom.preferredCCTMireds);
+for(const body of [{normalCCTMireds:500},{reliefFanPercent:10},{reliefHoldMs:-1},{recoverConfirmMs:0}])
+ assert.equal((await request('/api/profile',body)).status,400);
+assert.equal((await request('/api/profile')).body.recoverConfirmMs,5000);
+await request('/__mock/scenario',{scenario:'normal'});
+await request('/api/profile',{...profile,occupancyAutomationEnabled:true});
+await request('/__mock/scenario',{scenario:'vacant'});
+let absent=(await request('/api/status')).body;
+assert.equal(absent.outputs.lightOn,false); assert.equal(absent.outputs.fanOn,false);
+await request('/api/profile',{occupancyAutomationEnabled:false});
+absent=(await request('/api/status')).body;
+assert.equal(absent.sensor.occupied,false); // PIR is still reported honestly.
+assert.equal(absent.outputs.lightOn,true); assert.equal(absent.outputs.fanOn,true);
+await request('/api/profile',{lightWeight:.8});
+assert.equal((await request('/api/profile')).body.occupancyAutomationEnabled,false); // omitted retains stored setting
+assert.equal((await request('/api/diagnostics')).body.profile.occupancyAutomationEnabled,false);
+for(const value of [0,1,'false',null]) assert.equal((await request('/api/profile',{occupancyAutomationEnabled:value})).status,400);
+await request('/api/profile',{occupancyAutomationEnabled:true});
+assert.equal((await request('/api/status')).body.outputs.lightOn,false);
+await request('/__mock/scenario',{scenario:'normal'});
+assert.equal((await request('/api/status')).body.outputs.lightOn,true);
+assert.equal((await request('/api/status')).body.outputs.fanOn,true);
+await request('/api/light',{power:false,brightness:0,cct:333});
+await request('/api/fan',{power:false,speed:0});
+assert.equal((await request('/api/status')).body.system.mode,'MANUAL');
+assert.equal((await request('/api/status')).body.outputs.lightOn,false);
+assert.equal((await request('/api/status')).body.outputs.fanOn,false);
 Date.now = realNow;
 console.log('Mock API scenarios, sensitivity/tone-only setup, normal output preservation and relief tone passed');

@@ -597,10 +597,9 @@ void System::AlgorithmWork() {
         OnModeChanged(previousMode, mode);
     }
 
-    // Keep scoring and baseline learning active without advancing automatic controllers
-    // while manual, override, or safe outputs are selected.
+    // Keep scoring in every mode. Manual/override/safe input never updates the ordinary baseline.
     k_mutex_lock(&mLock, K_FOREVER);
-    const StimulusScore stimulus = GetAlgorithm()->EvaluateEnvironment(snapshot);
+    const StimulusScore stimulus = GetAlgorithm()->EvaluateEnvironment(snapshot, mode == ControlMode::Auto);
     ControlTarget nextTarget = {};
     if (mode == ControlMode::Auto) {
         nextTarget = GetAlgorithm()->Evaluate(snapshot, stimulus);

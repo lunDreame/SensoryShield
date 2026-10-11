@@ -56,8 +56,13 @@ export interface AppConfig {
   preferredCCTMireds: number;
   preferredBrightness: number;
   preferredFanPercent: number;
+  normalCCTMireds: number;
+  reliefFanPercent: number;
+  reliefHoldMs: number;
+  recoverConfirmMs: number;
   fanMaxPercent: number;
   occupancyTimeoutMs: number;
+  occupancyAutomationEnabled: boolean;
   profileConfigured: boolean;
 }
 

@@ -6,7 +6,9 @@
 #define LEGACY_CONFIG_VERSION 0x00040000
 #define PREVIOUS_CONFIG_VERSION 0x00050000
 #define SETUP_CONFIG_VERSION 0x00060000
-#define CONFIG_VERSION 0x00070000
+#define OUTPUT_CONFIG_VERSION 0x00070000
+#define RELIEF_CONFIG_VERSION 0x00080000
+#define CONFIG_VERSION 0x00090000
 #define ENVIRONMENT_SAMPLE_CAPACITY 31
 
 #define SENSOR_PERIOD_MS 200
@@ -26,6 +28,8 @@
 #define FAN_MIN_DUTY_PERCENT 18
 #define AUTO_FAN_QUIET_PERCENT 20
 #define AUTO_FAN_NORMAL_PERCENT 60
+#define AUTO_RELIEF_HOLD_MS 1500
+#define AUTO_RECOVER_CONFIRM_MS 2500
 #define STIMULUS_MAX_SCORE 4.0f
 #define OVERRIDE_DURATION_MS 900000
 
@@ -43,6 +47,12 @@ struct AppConfig {
     uint16_t preferredCCTMireds = 333;
     uint8_t preferredBrightness = 100;
     uint8_t preferredFanPercent = AUTO_FAN_NORMAL_PERCENT;
+    uint8_t reservedV7Padding[2] = {}; // Keep legacy fields at their original offsets.
+    uint16_t normalCCTMireds = 250;
+    uint8_t reliefFanPercent = AUTO_FAN_QUIET_PERCENT;
+    uint32_t reliefHoldMs = AUTO_RELIEF_HOLD_MS;
+    uint32_t recoverConfirmMs = AUTO_RECOVER_CONFIRM_MS;
+    bool occupancyAutomationEnabled = true;
 };
 
 struct ChildDeviceDescriptor {
@@ -54,7 +64,7 @@ struct ChildDeviceDescriptor {
 };
 
 struct SoundFeatures {
-    float energy;
+    float energy; // Legacy name: normalized PCM RMS amplitude, not acoustic energy or calibrated SPL.
     float peak;
     float delta;
     uint32_t timestampMs;

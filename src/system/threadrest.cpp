@@ -71,6 +71,8 @@ struct ProfileRequest {
     int32_t preferredBrightness;
     bool useMeasuredEnvironment;
     int32_t preferredFanPercent;
+    int32_t normalCCTMireds, reliefFanPercent, reliefHoldMs, recoverConfirmMs;
+    bool occupancyAutomationEnabled;
 };
 
 struct StaticAsset {
@@ -137,6 +139,11 @@ static const struct json_obj_descr kProfileFields[] = {
     JSON_OBJ_DESCR_PRIM(ProfileRequest, preferredBrightness, JSON_TOK_NUMBER),
     JSON_OBJ_DESCR_PRIM(ProfileRequest, useMeasuredEnvironment, JSON_TOK_TRUE),
     JSON_OBJ_DESCR_PRIM(ProfileRequest, preferredFanPercent, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(ProfileRequest, normalCCTMireds, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(ProfileRequest, reliefFanPercent, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(ProfileRequest, reliefHoldMs, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(ProfileRequest, recoverConfirmMs, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(ProfileRequest, occupancyAutomationEnabled, JSON_TOK_TRUE),
 };
 
 const struct http_header kCorsHeaders[] = {
@@ -159,6 +166,11 @@ constexpr int kProfileRequiredFields = BIT_MASK(9);
 constexpr int kPreferredCCTField = BIT(9);
 constexpr int kPreferredBrightnessField = BIT(10);
 constexpr int kPreferredFanField = BIT(12);
+constexpr int kNormalCCTField = BIT(13);
+constexpr int kReliefFanField = BIT(14);
+constexpr int kReliefHoldField = BIT(15);
+constexpr int kRecoverConfirmField = BIT(16);
+constexpr int kOccupancyAutomationField = BIT(17);
 
 uint16_t servicePort = THREAD_REST_PORT;
 HTTP_SERVICE_DEFINE(sensoryshield_thread_rest, nullptr, &servicePort, 8, 8, nullptr, nullptr, nullptr);
@@ -393,7 +405,11 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
                     ((parsed & kPreferredBrightnessField) != 0 &&
                      (payload.preferredBrightness < payload.minBrightness || payload.preferredBrightness > payload.maxBrightness)) ||
                     ((parsed & kPreferredFanField) != 0 &&
-                     (payload.preferredFanPercent < 0 || payload.preferredFanPercent > payload.fanMaxPercent))) {
+                     (payload.preferredFanPercent < 0 || payload.preferredFanPercent > payload.fanMaxPercent)) ||
+                    ((parsed & kNormalCCTField) && (payload.normalCCTMireds < payload.minCCTMireds || payload.normalCCTMireds > payload.maxCCTMireds)) ||
+                    ((parsed & kReliefFanField) && (payload.reliefFanPercent < 0 || payload.reliefFanPercent > 100 || (payload.reliefFanPercent > 0 && payload.reliefFanPercent < FAN_MIN_DUTY_PERCENT))) ||
+                    ((parsed & kReliefHoldField) && (payload.reliefHoldMs < 0 || payload.reliefHoldMs > 600000)) ||
+                    ((parsed & kRecoverConfirmField) && (payload.recoverConfirmMs < 250 || payload.recoverConfirmMs > 60000))) {
                     ret = -EINVAL;
                 } else {
                     ret = ParseFixedToken(payload.lightWeight, &lightWeight);
@@ -403,7 +419,7 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
                 }
 
                 if (ret == 0) {
-                    const AppConfig config = {CONFIG_VERSION,
+                    AppConfig config = {CONFIG_VERSION,
                                               lightWeight,
                                               soundWeight,
                                               static_cast<uint8_t>(payload.minBrightness),
@@ -420,6 +436,12 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
                                                   ? payload.preferredBrightness : GetMemory()->Config().preferredBrightness),
                                               static_cast<uint8_t>((parsed & kPreferredFanField) != 0
                                                   ? payload.preferredFanPercent : GetMemory()->Config().preferredFanPercent)};
+                    const auto& stored = GetMemory()->Config();
+                    config.normalCCTMireds = (parsed & kNormalCCTField) ? payload.normalCCTMireds : stored.normalCCTMireds;
+                    config.reliefFanPercent = (parsed & kReliefFanField) ? payload.reliefFanPercent : stored.reliefFanPercent;
+                    config.reliefHoldMs = (parsed & kReliefHoldField) ? payload.reliefHoldMs : stored.reliefHoldMs;
+                    config.recoverConfirmMs = (parsed & kRecoverConfirmField) ? payload.recoverConfirmMs : stored.recoverConfirmMs;
+                    config.occupancyAutomationEnabled = (parsed & kOccupancyAutomationField) ? payload.occupancyAutomationEnabled : stored.occupancyAutomationEnabled;
                     ret = GetThreadRest()->HandleProfileUpdate(config, payload.useMeasuredEnvironment);
                 }
                 context->requestLength = 0U;
@@ -632,9 +654,9 @@ int ThreadRest::BuildProfileJson(char* buffer, size_t bufferSize) const {
     const int written = snprintf(buffer, bufferSize,
                                  "{\"lightWeight\":%s,\"soundWeight\":%s,\"minBrightness\":%u,"
                                  "\"maxBrightness\":%u,\"minCCTMireds\":%u,\"maxCCTMireds\":%u,"
-                                 "\"preferredCCTMireds\":%u,\"preferredBrightness\":%u,\"preferredFanPercent\":%u,\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u,\"profileConfigured\":%s}",
+                                 "\"preferredCCTMireds\":%u,\"preferredBrightness\":%u,\"preferredFanPercent\":%u,\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u,\"normalCCTMireds\":%u,\"reliefFanPercent\":%u,\"reliefHoldMs\":%u,\"recoverConfirmMs\":%u,\"occupancyAutomationEnabled\":%s,\"profileConfigured\":%s}",
                                  lightWeight, soundWeight, config.minBrightness, config.maxBrightness,
-                                 config.minCCTMireds, config.maxCCTMireds, config.preferredCCTMireds, config.preferredBrightness, config.preferredFanPercent, config.fanMaxPercent, config.occupancyTimeoutMs,
+                                 config.minCCTMireds, config.maxCCTMireds, config.preferredCCTMireds, config.preferredBrightness, config.preferredFanPercent, config.fanMaxPercent, config.occupancyTimeoutMs, config.normalCCTMireds, config.reliefFanPercent, config.reliefHoldMs, config.recoverConfirmMs, config.occupancyAutomationEnabled ? "true" : "false",
                                  config.profileConfigured ? "true" : "false");
     return (written < 0 || static_cast<size_t>(written) >= bufferSize) ? -ENOMEM : 0;
 }
@@ -664,13 +686,13 @@ int ThreadRest::BuildDiagnosticsJson(char* buffer, size_t bufferSize) const {
                  "\"matter\":{\"commissioned\":%s,\"fabricCount\":%u,\"threadAttached\":%s},"
                  "\"profile\":{\"lightWeight\":%s,\"soundWeight\":%s,\"minBrightness\":%u,"
                  "\"maxBrightness\":%u,\"minCCTMireds\":%u,\"maxCCTMireds\":%u,"
-                 "\"preferredCCTMireds\":%u,\"preferredBrightness\":%u,\"preferredFanPercent\":%u,\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u,\"profileConfigured\":%s}}",
+                 "\"preferredCCTMireds\":%u,\"preferredBrightness\":%u,\"preferredFanPercent\":%u,\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u,\"normalCCTMireds\":%u,\"reliefFanPercent\":%u,\"reliefHoldMs\":%u,\"recoverConfirmMs\":%u,\"occupancyAutomationEnabled\":%s,\"profileConfigured\":%s}}",
                  APP_NAME, k_uptime_get_32() / 1000U, snapshot.illuminanceValid ? "true" : "false",
                  snapshot.micValid ? "true" : "false", snapshot.pirValid ? "true" : "false",
                  GetMatterBridge()->Commissioned() ? "true" : "false", GetMatterBridge()->FabricCount(),
                  GetMatterBridge()->ThreadAttached() ? "true" : "false", lightWeight, soundWeight,
                  config.minBrightness, config.maxBrightness, config.minCCTMireds, config.maxCCTMireds,
-                 config.preferredCCTMireds, config.preferredBrightness, config.preferredFanPercent, config.fanMaxPercent, config.occupancyTimeoutMs, config.profileConfigured ? "true" : "false");
+                 config.preferredCCTMireds, config.preferredBrightness, config.preferredFanPercent, config.fanMaxPercent, config.occupancyTimeoutMs, config.normalCCTMireds, config.reliefFanPercent, config.reliefHoldMs, config.recoverConfirmMs, config.occupancyAutomationEnabled ? "true" : "false", config.profileConfigured ? "true" : "false");
 
     return (written < 0 || static_cast<size_t>(written) >= bufferSize) ? -ENOMEM : 0;
 }

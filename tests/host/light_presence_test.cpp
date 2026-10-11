@@ -7,6 +7,17 @@
 int main() {
     AppConfig config;
     SensorSnapshot s = {100, {.01f, .01f, 0, 0, true}, true, 0, true, true, true};
+    // Confirm the curve starts gently and increases monotonically to the lower bound.
+    uint8_t previous = config.preferredBrightness;
+    for (float score : {1.4f, 2.0f, 2.8f, 4.0f}) {
+        LightPresenceController curve;
+        LightTarget target{};
+        for (uint32_t t=0;t<=750;t+=250) target=curve.Evaluate(s,config,score,t);
+        assert(target.brightnessPercent <= previous && target.brightnessPercent >= config.minBrightness);
+        if (score==1.4f) assert(target.brightnessPercent==98);
+        if (score==4.0f) assert(target.brightnessPercent==config.minBrightness);
+        previous=target.brightnessPercent;
+    }
     for (uint16_t preference : {uint16_t(250), uint16_t(333), uint16_t(417)}) {
         LightPresenceController c;
         config.preferredCCTMireds = preference;
@@ -47,5 +58,58 @@ int main() {
     assert(c.Evaluate(s, config, 0, 3000).brightnessPercent == 25);
     s.observedOutputs.lightOn = false;
     assert(!c.Evaluate(s, config, 0, 3250).on);
-    puts("confirmed relief, preferred relief tone, stable recovery, bounds and unchanged absence passed");
+    {
+        LightPresenceController custom; AppConfig c;
+        c.normalCCTMireds = 370; c.preferredCCTMireds = 250;
+        c.minBrightness = 40; c.reliefHoldMs = 10000; c.recoverConfirmMs = 1000;
+        s = {100, {.01f,.01f,0,0,true},true,0,true,true,true};
+        assert(custom.Evaluate(s,c,0,0).cctMireds == 370);
+        for (uint32_t t=250;t<=1000;t+=250) custom.Evaluate(s,c,4,t);
+        assert(custom.Evaluate(s,c,4,1250).brightnessPercent == 40);
+        assert(custom.Evaluate(s,c,4,1250).cctMireds == 250);
+        for (uint32_t t=1500;t<=12000;t+=250) assert(custom.Evaluate(s,c,0,t).brightnessPercent == 40);
+        for (uint32_t t=12250;t<=35000;t+=250) custom.Evaluate(s,c,0,t);
+        auto restored = custom.Evaluate(s,c,0,35250);
+        assert(restored.brightnessPercent == 100 && restored.cctMireds == 370);
+    }
+    {
+        // A late spike must not borrow the time accumulated by weaker inputs.
+        LightPresenceController c; AppConfig cfg;
+        s = {100, {.01f,.01f,0,0,true},true,0,true,true,true};
+        for (uint32_t t=0;t<750;t+=250) c.Evaluate(s,cfg,1.4f,t);
+        auto target=c.Evaluate(s,cfg,4,750);
+        assert(target.brightnessPercent==98 && target.cctMireds==cfg.preferredCCTMireds);
+        // One stronger input during relief also leaves brightness unchanged.
+        assert(c.Evaluate(s,cfg,4,1000).brightnessPercent==98);
+        assert(c.Evaluate(s,cfg,1.4f,1250).brightnessPercent==98);
+        for (uint32_t t=1500;t<2250;t+=250) assert(c.Evaluate(s,cfg,4,t).brightnessPercent==98);
+        assert(c.Evaluate(s,cfg,4,2250).brightnessPercent==cfg.minBrightness);
+        // The floor must not prevent a newly saved relief tone from applying.
+        cfg.preferredCCTMireds=417;
+        target=c.Evaluate(s,cfg,4,2500);
+        assert(target.brightnessPercent==cfg.minBrightness && target.cctMireds==417);
+        cfg.preferredCCTMireds=250;
+        target=c.Evaluate(s,cfg,0,2750);
+        assert(target.brightnessPercent==cfg.minBrightness && target.cctMireds==250);
+    }
+    {
+        LightPresenceController c; AppConfig cfg;
+        s = {100, {.01f,.01f,0,0,true},true,0,true,true,true};
+        for (uint32_t t=0;t<=750;t+=250) c.Evaluate(s,cfg,1.4f,t);
+        c.Evaluate(s,cfg,4,1000);
+        s.controlInputsSettled=false; c.Evaluate(s,cfg,4,1250);
+        s.controlInputsSettled=true;
+        for (uint32_t t=1500;t<2250;t+=250) assert(c.Evaluate(s,cfg,4,t).brightnessPercent==98);
+        assert(c.Evaluate(s,cfg,4,2250).brightnessPercent==cfg.minBrightness);
+    }
+    {
+        LightPresenceController c; AppConfig cfg;
+        s = {100, {.01f,.01f,0,0,true},true,0,true,true,true};
+        for(uint32_t t=0;t<=750;t+=250) c.Evaluate(s,cfg,1.4f,t);
+        for(uint32_t t=1000;t<1750;t+=250) c.Evaluate(s,cfg,2,t);
+        auto target=c.Evaluate(s,cfg,4,1750);
+        assert(target.brightnessPercent<98 && target.brightnessPercent>cfg.minBrightness);
+        assert(c.Evaluate(s,cfg,2,2000).brightnessPercent==target.brightnessPercent);
+    }
+    puts("confirmed entry/escalation, live relief tone, recovery, bounds and absence passed");
 }
