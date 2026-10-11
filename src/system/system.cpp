@@ -69,6 +69,16 @@ int System::Initialize() {
         return ret;
     }
 
+    EnvironmentBaseline baseline;
+    const int baselineRet = GetMemory()->LoadEnvironmentBaseline(&baseline);
+    if (baselineRet == 0) {
+        mEnvironmentBaseline = baseline;
+        GetAlgorithm()->SetEnvironmentBaseline(baseline);
+        LOG_INF("Saved environment baseline restored");
+    } else if (baselineRet != -ENOENT) {
+        LOG_WRN("Environment baseline restore skipped: %d", baselineRet);
+    }
+
     ret = InitializeMatter();
     if (ret != 0) {
         LOG_WRN("Matter init deferred: %d", ret);
@@ -433,10 +443,24 @@ int System::SetManualFan(bool on, uint8_t speedPercent) {
 }
 
 int System::UpdateConfig(const AppConfig& config) {
+    k_mutex_lock(&mLock, K_FOREVER);
     const int ret = GetMemory()->SaveConfig(config);
     if (ret == 0) {
         GetAlgorithm()->SetConfig(GetMemory()->Config());
     }
+    k_mutex_unlock(&mLock);
+    return ret;
+}
+
+int System::UpdateEnvironmentBaseline(const EnvironmentBaseline& baseline) {
+    if (!IsValidEnvironmentBaseline(baseline)) return -EINVAL;
+    k_mutex_lock(&mLock, K_FOREVER);
+    const int ret = GetMemory()->SaveEnvironmentBaseline(baseline);
+    if (ret == 0) {
+        mEnvironmentBaseline = baseline;
+        GetAlgorithm()->SetEnvironmentBaseline(baseline);
+    }
+    k_mutex_unlock(&mLock);
     return ret;
 }
 
@@ -445,6 +469,11 @@ int System::FactoryReset() {
     if (ret != 0) {
         return ret;
     }
+
+    k_mutex_lock(&mLock, K_FOREVER);
+    mEnvironmentBaseline = {};
+    GetAlgorithm()->SetEnvironmentBaseline(mEnvironmentBaseline);
+    k_mutex_unlock(&mLock);
 
     ret = GetMatterBridge()->FactoryReset();
     if (ret != 0) {
@@ -538,7 +567,6 @@ void System::AlgorithmWork() {
     const SensorSnapshot snapshot = mSnapshot;
     const ControlTarget manualTarget = mManualTarget;
     ControlTarget safeTarget = mTarget;
-    k_mutex_unlock(&mLock);
 
     if (modeChanged) {
         OnModeChanged(previousMode, mode);
@@ -559,8 +587,6 @@ void System::AlgorithmWork() {
         nextTarget.fanPercent = 0;
     }
     nextTarget.sensoryScore = stimulus.combined;
-
-    k_mutex_lock(&mLock, K_FOREVER);
     mTarget = nextTarget;
     if (mode == ControlMode::Safe) {
         mAppliedTarget = safeTarget;

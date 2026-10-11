@@ -15,7 +15,8 @@ export function summarizeEnvironment(samples: StatusResponse[]): EnvironmentMeas
   if (samples.length < ENVIRONMENT_SAMPLE_COUNT || samples.some(({ sensor, system }) =>
     !system.ready || !sensor.illuminanceValid || !sensor.micValid ||
     !Number.isFinite(sensor.lux) || sensor.lux < 0 ||
-    !Number.isFinite(sensor.soundEnergy) || sensor.soundEnergy < 0 || sensor.soundEnergy > 1)) {
+    !Number.isFinite(sensor.soundEnergy) || sensor.soundEnergy < 0 || sensor.soundEnergy > 1 || !Number.isFinite(sensor.soundTimestampMs) ||
+    !Number.isFinite(sensor.soundAgeMs) || sensor.soundAgeMs! < 0 || sensor.soundAgeMs! > 1000)) {
     throw new Error("밝기나 소리 센서의 측정값을 확인할 수 없어요. 센서 연결을 확인한 뒤 다시 측정해 주세요.");
   }
   const median = (values: number[]) => {
@@ -51,12 +52,19 @@ export async function measureEnvironment(onProgress: (count: number) => void): P
       rgbMode: output.rgbMode, red: output.red, green: output.green, blue: output.blue }));
     await check(setFan({ power: output.fanOn, speed: output.fanPercent }));
     const samples: StatusResponse[] = [];
-    for (let i = 0; i < ENVIRONMENT_SAMPLE_COUNT; i++) {
+    let previousTimestamp = original.sensor.soundTimestampMs;
+    const deadline = Date.now() + 30000;
+    // Allow pinned outputs to settle before collecting the reference.
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    while (samples.length < ENVIRONMENT_SAMPLE_COUNT) {
+      if (Date.now() > deadline) throw new Error("새 측정값이 충분히 들어오지 않았어요. 센서 연결을 확인한 뒤 다시 측정해 주세요.");
       await new Promise(resolve => setTimeout(resolve, SAMPLE_INTERVAL_MS));
       const sample = await getStatus();
       // Fail promptly rather than treating disconnected/invalid readings as quiet.
       summarizeEnvironment(Array(ENVIRONMENT_SAMPLE_COUNT).fill(sample));
       if (sample.system.mode !== "MANUAL") throw new Error("측정 중 작동 방식이 바뀌었어요. 다른 조작을 멈추고 다시 측정해 주세요.");
+      if (sample.sensor.soundTimestampMs === previousTimestamp) continue;
+      previousTimestamp = sample.sensor.soundTimestampMs;
       samples.push(sample);
       onProgress(samples.length);
     }

@@ -12,7 +12,10 @@ class SoundFanController final {
     static constexpr uint8_t NormalPercent = AUTO_FAN_NORMAL_PERCENT;
     static constexpr uint8_t QuietPercent = AUTO_FAN_QUIET_PERCENT;
 
+    void SetEnvironmentBaseline(const EnvironmentBaseline& baseline) { Reset(); mReference = baseline; }
+
     void Reset() {
+        mReference = {};
         mBaseline.Reset();
         mSeen = mQuiet = mHighPending = mLowPending = false;
         mPercent = 0;
@@ -47,9 +50,10 @@ class SoundFanController final {
         mLastSample = sound.timestampMs;
         mSeen = true;
 
-        const bool ready = mBaseline.Ready();
-        const float median = mBaseline.Median();
-        const float scale = mBaseline.Mad(0.005f);
+        const bool fixed = IsValidEnvironmentBaseline(mReference);
+        const bool ready = fixed || mBaseline.Ready();
+        const float median = fixed ? mReference.soundMedian : mBaseline.Median();
+        const float scale = fixed ? fmaxf(mReference.soundMad, 0.005f) : mBaseline.Mad(0.005f);
         const float upward = ready ? fmaxf(0.0f, sound.energy - median) / scale : 0.0f;
         const float weight = isfinite(config.soundWeight) ? ClampValue(config.soundWeight, 0.0f, 1.0f) : 0.0f;
         const float severity = upward * weight;
@@ -57,7 +61,7 @@ class SoundFanController final {
         const bool low = ready && severity <= 1.0f;
         const bool impulse = ready && sound.delta > 2.0f * scale && sound.peak > median + 4.0f * scale;
         // Compare before learning. Elevated intervals must not become the new quiet baseline.
-        if (!ready || (upward <= 1.2f && !impulse)) mBaseline.Add(sound.energy);
+        if (!fixed && (!ready || (upward <= 1.2f && !impulse))) mBaseline.Add(sound.energy);
 
         if (!mQuiet) {
             mLowPending = false;
@@ -93,6 +97,7 @@ class SoundFanController final {
     }
 
   private:
+    EnvironmentBaseline mReference = {};
     RollingBaseline mBaseline;
     bool mSeen = false, mQuiet = false, mHighPending = false, mLowPending = false;
     uint8_t mPercent = 0;

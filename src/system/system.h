@@ -16,6 +16,13 @@ class System final {
                        uint8_t green, uint8_t blue);
     int SetManualFan(bool on, uint8_t speedPercent);
     int UpdateConfig(const AppConfig& config);
+    int UpdateEnvironmentBaseline(const EnvironmentBaseline& baseline);
+    EnvironmentBaseline Baseline() const {
+        k_mutex_lock(&mLock, K_FOREVER);
+        const auto baseline = mEnvironmentBaseline;
+        k_mutex_unlock(&mLock);
+        return baseline;
+    }
     int FactoryReset();
     int RegisterMatterEndpoints();
 
@@ -85,6 +92,7 @@ class System final {
     struct k_work mFactoryResetButtonWork;
     struct gpio_callback mFactoryResetButtonCallback = {};
     mutable struct k_mutex mLock;
+    EnvironmentBaseline mEnvironmentBaseline = {};
     SensorSnapshot mSnapshot = {};
     ControlTarget mTarget = {};
     ControlTarget mManualTarget = {};

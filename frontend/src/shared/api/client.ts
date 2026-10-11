@@ -126,6 +126,24 @@ export function saveProfile(config: AppConfig): Promise<{ ok: boolean }> {
   });
 }
 
+export interface BaselinePayload {
+  luxMedianMilli: number;
+  luxMadMilli: number;
+  soundMedianMicro: number;
+  soundMadMicro: number;
+  samples: number;
+}
+export function saveEnvironmentBaseline(measurement: { luxMedian: number; luxMad: number; soundMedian: number; soundMad: number; samples: number }): Promise<{ ok: boolean }> {
+  return request("/api/environment-baseline", { method: "POST", body: JSON.stringify({
+    luxMedianMilli: Math.round(measurement.luxMedian * 1000), luxMadMilli: Math.round(measurement.luxMad * 1000),
+    soundMedianMicro: Math.round(measurement.soundMedian * 1000000), soundMadMicro: Math.round(measurement.soundMad * 1000000),
+    samples: measurement.samples
+  } satisfies BaselinePayload) });
+}
+export function getEnvironmentBaseline(): Promise<BaselinePayload & { configured: boolean }> {
+  return request("/api/environment-baseline");
+}
+
 export function getProfile(): Promise<AppConfig> {
   return request("/api/profile");
 }

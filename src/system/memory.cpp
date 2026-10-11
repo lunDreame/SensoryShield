@@ -8,6 +8,8 @@
 
 LOG_MODULE_REGISTER(memory, LOG_LEVEL_INF);
 
+#define ENVIRONMENT_BASELINE_KEY "sensoryshield/environment_baseline"
+
 #define APP_CONFIG_KEY "sensoryshield/app_config"
 #define RUNTIME_STATE_KEY "sensoryshield/runtime_state"
 #define DEVICE_TABLE_KEY "sensoryshield/device_table"
@@ -126,6 +128,34 @@ int Memory::SaveConfig(const AppConfig& config) {
     mConfig = next;
     LOG_INF("App config saved");
     return 0;
+}
+
+int Memory::LoadEnvironmentBaseline(EnvironmentBaseline* baseline) {
+    if (baseline == nullptr) return -EINVAL;
+    *baseline = {};
+    bool found = false;
+    struct LoadContext { EnvironmentBaseline* value; bool* found; } context{baseline, &found};
+    const int ret = settings_load_subtree_direct(ENVIRONMENT_BASELINE_KEY,
+        [](const char* key, size_t len, settings_read_cb readCb, void* cbArg, void* param) {
+            ARG_UNUSED(key);
+            auto* context = static_cast<LoadContext*>(param);
+            if (len != sizeof(EnvironmentBaseline)) return -EINVAL;
+            const int bytes = readCb(cbArg, context->value, len);
+            if (bytes < 0) return bytes;
+            if (static_cast<size_t>(bytes) != len) return -EIO;
+            *context->found = true;
+            return 0;
+        }, &context);
+    if (ret != 0 || !found || !IsValidEnvironmentBaseline(*baseline)) {
+        *baseline = {};
+        return ret != 0 ? ret : !found ? -ENOENT : -EINVAL;
+    }
+    return 0;
+}
+
+int Memory::SaveEnvironmentBaseline(const EnvironmentBaseline& baseline) {
+    if (!IsValidEnvironmentBaseline(baseline)) return -EINVAL;
+    return settings_save_one(ENVIRONMENT_BASELINE_KEY, &baseline, sizeof(baseline));
 }
 
 int Memory::LoadRuntimeState(ControlMode* mode, ControlTarget* target) {
@@ -251,6 +281,8 @@ int Memory::FactoryReset() {
         return ret;
     }
 
+    ret = settings_delete(ENVIRONMENT_BASELINE_KEY);
+    if (ret != 0 && ret != -ENOENT) return ret;
     mConfig = AppConfig{};
     LOG_INF("App storage reset");
     return 0;

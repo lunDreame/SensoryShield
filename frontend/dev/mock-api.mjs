@@ -1,5 +1,6 @@
 // Vite development middleware only. Fixtures illustrate UI states, not firmware predictions.
 export function mockApi() {
+  let baseline = { configured: false, luxMedianMilli: 0, luxMadMilli: 0, soundMedianMicro: 0, soundMadMicro: 0, samples: 0 };
   let scenario = "normal";
   let mode = "AUTO";
   let manualFan = { fanOn: false, fanPercent: 0 };
@@ -51,6 +52,15 @@ export function mockApi() {
         const vacant = scenario === "vacant";
         const impulse = scenario === "impulse" && Math.floor(Date.now()/1500)%4 === 0;
         const autoSpeed = vacant || profile.fanMaxPercent === 0 ? 0 : Math.min(profile.fanMaxPercent, noise || micError ? 20 : 60);
+        if (path === "/api/environment-baseline") {
+          if (req.method === "POST") {
+            const ranges = {luxMedianMilli:65535000,luxMadMilli:65535000,soundMedianMicro:1000000,soundMadMicro:1000000};
+            if (Object.entries(ranges).some(([key,max])=>!Number.isInteger(body[key]) || body[key]<0 || body[key]>max) ||
+              !Number.isInteger(body.samples) || body.samples<20 || body.samples>1000) { send(400,{ok:false}); return; }
+            baseline = { ...body, configured: true };
+          }
+          send(200,req.method === "POST" ? {ok:true} : baseline);return;
+        }
         if (path === "/api/profile") {
           if (req.method === "POST") profile = {...profile, ...body};
           send(200,req.method === "POST" ? {ok:true} : profile);return;
@@ -77,7 +87,7 @@ export function mockApi() {
           mode="MANUAL";send(200,{ok:true});return;
         }
         const status = {
-          sensor:{lux:180,occupied:!vacant,soundEnergy:micError ? 0 : noise || impulse ? 0.15 : 0.01,
+          sensor:{soundTimestampMs:Date.now()-started,soundAgeMs:0,lux:180,occupied:!vacant,soundEnergy:micError ? 0 : noise || impulse ? 0.15 : 0.01,
             sensoryScore:noise || impulse ? 6 : 0.4,illuminanceValid:true,micValid:!micError,pirValid:true},
           outputs: mode === "MANUAL" || mode === "OVERRIDE" ? {...manualLight,...manualFan} : mode === "SAFE" ?
             {lightOn:false,brightnessPercent:0,cctMireds:370,rgbMode:false,red:255,green:255,blue:255,fanOn:false,fanPercent:0} :

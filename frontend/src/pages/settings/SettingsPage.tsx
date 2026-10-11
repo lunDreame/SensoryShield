@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { getProfile, saveProfile } from "../../shared/api/client";
+import { getProfile, saveProfile, getEnvironmentBaseline, type BaselinePayload } from "../../shared/api/client";
 import { describeKelvin, describeSensitivity } from "../../shared/lib/environment-labels";
+import { ProfileOnboarding } from "../onboarding/ProfileOnboarding";
 import { Panel } from "../../shared/ui/Panel";
 import type { AppConfig } from "../../shared/types/domain";
 
@@ -34,6 +35,9 @@ interface SettingsPageProps {
 }
 
 export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
+  const [remeasuring, setRemeasuring] = useState(false);
+  const [baseline, setBaseline] = useState<(BaselinePayload & { configured: boolean }) | null>(null);
+  const [baselineError, setBaselineError] = useState(false);
   const [config, setConfig] = useState(initialConfig);
   const [drafts, setDrafts] = useState<Partial<Record<EditableConfigKey, string>>>({});
   const [state, setState] = useState("변경 사항 없음");
@@ -55,6 +59,13 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
     });
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    void getEnvironmentBaseline().then(value => { if (active) { setBaseline(value); setBaselineError(false); } })
+      .catch(() => { if (active) setBaselineError(true); });
+    return () => { active = false; };
+  }, [remeasuring]);
 
   function displayValue(key: EditableConfigKey) {
     if (key === "occupancyTimeoutMs") return Math.round(config[key] / 1000);
@@ -149,6 +160,9 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
     }
   }
 
+  if (remeasuring) return <ProfileOnboarding initialConfig={config} measurementOnly
+    onCancel={() => setRemeasuring(false)} onComplete={(saved) => { setConfig(saved); setRemeasuring(false); }} />;
+
   return (
     <main className="page-grid">
       <section className="overview">
@@ -157,6 +171,13 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
           <p>공간에 맞게 조명과 바람의 범위를 정해보세요.</p>
         </div>
       </section>
+      <Panel title="평소 환경 기준" subtitle="측정한 밝기와 소리를 자동 조절의 비교 기준으로 사용해요."
+        action={<button className="button button-weak" type="button" disabled={pending} onClick={() => setRemeasuring(true)}>평소 환경 다시 측정</button>}>
+        <p>{baselineError ? "기기에 저장된 기준을 확인하지 못했어요. 연결을 확인해 주세요." : baseline?.configured
+          ? `기기에 저장됨 · 밝기 ${(baseline.luxMedianMilli / 1000).toFixed(1)} lx · 소리 ${(baseline.soundMedianMicro / 10000).toFixed(1)}% (마이크 상대 입력)`
+          : baseline ? "아직 측정 기준이 없어요. 평소 환경을 측정하고 저장해 주세요." : "저장된 기준을 확인하고 있어요."}</p>
+        <p>저장된 기준은 전원을 다시 켜도 유지돼요. 설치 위치나 평소 환경이 바뀌면 다시 측정해 주세요.</p>
+      </Panel>
       <Panel title="개인 맞춤 기준" subtitle="처음 선택한 빛·소리 민감도와 선호 조명을 다시 설정할 수 있어요."
         action={<button className="button button-weak" type="button" disabled={pending} onClick={() => void restartOnboarding()}>개인 설정 다시 하기</button>}>
         <p className="profile-setting-note">다시 답하면 새로운 선택이 자동 조절의 기준으로 저장돼요.</p>

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { saveProfile } from "../../shared/api/client";
+import { saveProfile, saveEnvironmentBaseline } from "../../shared/api/client";
 import { ENVIRONMENT_SAMPLE_COUNT, measureEnvironment, type EnvironmentMeasurement } from "../../features/measure-environment/measureEnvironment";
 import type { AppConfig } from "../../shared/types/domain";
 
@@ -8,6 +8,8 @@ type LightPreference = "clear" | "balanced" | "calm";
 
 interface ProfileOnboardingProps {
   initialConfig: AppConfig;
+  measurementOnly?: boolean;
+  onCancel?: () => void;
   onComplete: (config: AppConfig) => void;
 }
 
@@ -31,12 +33,12 @@ const lightRangeByPreference: Record<LightPreference, Pick<AppConfig, "minBright
   calm: { minBrightness: 5, maxBrightness: 65, minCCTMireds: 333, maxCCTMireds: 454 }
 };
 
-export function ProfileOnboarding({ initialConfig, onComplete }: ProfileOnboardingProps) {
-  const [step, setStep] = useState(0);
+export function ProfileOnboarding({ initialConfig, onComplete, measurementOnly = false, onCancel }: ProfileOnboardingProps) {
+  const [step, setStep] = useState(measurementOnly ? 3 : 0);
   const [lightSensitivity, setLightSensitivity] = useState<Level>("medium");
   const [soundSensitivity, setSoundSensitivity] = useState<Level>("medium");
   const [lightPreference, setLightPreference] = useState<LightPreference>("balanced");
-  const [useDefaults, setUseDefaults] = useState(false);
+  const [useDefaults, setUseDefaults] = useState(measurementOnly);
   const [measurement, setMeasurement] = useState<EnvironmentMeasurement | null>(null);
   const [progress, setProgress] = useState(0);
   const [measuring, setMeasuring] = useState(false);
@@ -69,10 +71,12 @@ export function ProfileOnboarding({ initialConfig, onComplete }: ProfileOnboardi
     setPending(true);
     setError(null);
     try {
-      if (!(await saveProfile(config)).ok) throw new Error("rejected");
+      if (!measurement) throw new Error("missing measurement");
+      if (!(await saveEnvironmentBaseline(measurement)).ok) throw new Error("baseline rejected");
+      if (!measurementOnly && !(await saveProfile(config)).ok) throw new Error("rejected");
       onComplete(config);
     } catch {
-      setError("기기에 설정을 저장하지 못했어요. 기기 연결을 확인한 뒤 다시 시도해 주세요.");
+      setError(measurementOnly ? "측정 기준의 저장 완료를 확인하지 못했어요. 기기 연결을 확인한 뒤 다시 저장해 주세요." : "측정 기준 또는 개인 설정을 저장하지 못했어요. 기기 연결을 확인한 뒤 설정 완료를 다시 눌러 주세요. 기준만 먼저 저장된 경우에는 같은 결과로 다시 저장할 수 있어요.");
     } finally {
       setPending(false);
     }
@@ -176,7 +180,7 @@ export function ProfileOnboarding({ initialConfig, onComplete }: ProfileOnboardi
               <p className="measurement-note">측정은 약 10초 이상 걸리며 연결 상태에 따라 더 길어질 수 있어요. 이 결과는 평소 환경을 비교하기 위한 자료이며, 밝기나 소음이 적절하거나 편안한 수준인지 판정하는 결과는 아닙니다.</p>
             </div>
             <div className="measurement-status" role="status" aria-live="polite">
-              {measuring ? <><b>평소 환경을 측정하고 있어요</b><progress value={progress} max={ENVIRONMENT_SAMPLE_COUNT} /><span>측정 중에는 현재 환경을 유지하고, 화면을 닫거나 새로고침하지 마세요.</span></> : measurement ? <><b>측정이 완료됐어요</b><span>평소 밝기: {measurement.luxMedian.toFixed(1)} lx</span><span>평소 소리: {(measurement.soundMedian * 100).toFixed(1)}% · 마이크 상대 입력, dB 아님</span><span>현재 측정 결과는 이 화면에서만 확인할 수 있으며, 기기의 자동 조절 기준으로 저장되지는 않아요.</span></> : <span>준비가 끝나면 아래 버튼을 눌러 주세요.</span>}
+              {measuring ? <><b>평소 환경을 측정하고 있어요</b><progress value={progress} max={ENVIRONMENT_SAMPLE_COUNT} /><span>측정 중에는 현재 환경을 유지하고, 화면을 닫거나 새로고침하지 마세요.</span></> : measurement ? <><b>측정이 완료됐어요</b><span>평소 밝기: {measurement.luxMedian.toFixed(1)} lx</span><span>평소 소리: {(measurement.soundMedian * 100).toFixed(1)}% · 마이크 상대 입력, dB 아님</span><span>설정 완료를 누르면 이 결과가 기기에 저장되고 자동 조절의 비교 기준으로 사용돼요. 전원을 다시 켜도 유지되며, 환경이 바뀌면 다시 측정해 주세요.</span></> : <span>준비가 끝나면 아래 버튼을 눌러 주세요.</span>}
             </div>
             <button className={`button measurement-start${measuring ? " is-measuring" : ""}`} type="button" disabled={measuring || pending} onClick={() => void measure()}>
               <span className="measurement-start-icon" aria-hidden="true">
@@ -193,7 +197,7 @@ export function ProfileOnboarding({ initialConfig, onComplete }: ProfileOnboardi
 
         {error ? <div className="notice notice-error onboarding-error" role="alert"><i className="notice-dot" />{error}</div> : null}
         <div className="onboarding-actions">
-          {step > 0 ? <button className="button button-neutral" type="button" disabled={pending || measuring} onClick={() => { setError(null); setStep(useDefaults ? 0 : step - 1); setUseDefaults(false); setMeasurement(null); }}>이전</button> : (
+          {step > 0 ? <button className="button button-neutral" type="button" disabled={pending || measuring} onClick={() => { if (measurementOnly) { onCancel?.(); return; } setError(null); setStep(useDefaults ? 0 : step - 1); setUseDefaults(false); setMeasurement(null); }}>{measurementOnly ? "취소" : "이전"}</button> : (
             <button className="button button-neutral" type="button" disabled={pending} onClick={() => { setUseDefaults(true); setStep(3); }}>기본 설정으로 시작</button>
           )}
           {step < 3 ? (

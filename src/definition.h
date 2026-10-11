@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdint.h>
+#include <math.h>
 
 #define APP_NAME "SensoryShield"
 #define CONFIG_VERSION 0x00040000
@@ -37,6 +38,23 @@ struct AppConfig {
     uint32_t occupancyTimeoutMs = AUTO_OCCUPANCY_HOLD_MS;
     bool profileConfigured = false;
 };
+
+// Independently versioned so existing personal settings remain compatible.
+struct EnvironmentBaseline {
+    uint32_t version = 1;
+    float luxMedian = 0;
+    float luxMad = 0;
+    float soundMedian = 0;
+    float soundMad = 0;
+    uint32_t samples = 0;
+};
+inline bool IsValidEnvironmentBaseline(const EnvironmentBaseline& value) {
+    return value.version == 1 && value.samples >= 20 && value.samples <= 1000 &&
+        isfinite(value.luxMedian) && value.luxMedian >= 0 && value.luxMedian <= 65535 &&
+        isfinite(value.luxMad) && value.luxMad >= 0 && value.luxMad <= 65535 &&
+        isfinite(value.soundMedian) && value.soundMedian >= 0 && value.soundMedian <= 1 &&
+        isfinite(value.soundMad) && value.soundMad >= 0 && value.soundMad <= 1;
+}
 
 struct ChildDeviceDescriptor {
     uint32_t logicalId;

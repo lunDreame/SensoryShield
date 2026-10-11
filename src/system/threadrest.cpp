@@ -22,7 +22,7 @@ LOG_MODULE_REGISTER(threadrest, LOG_LEVEL_INF);
 #define THREAD_REST_REQUEST_CAPACITY 320U
 #define THREAD_REST_RESPONSE_CAPACITY 1024U
 
-enum class ApiRoute : uint8_t { Status, Light, Fan, Mode, Profile, Diagnostics, FactoryReset };
+enum class ApiRoute : uint8_t { Status, Light, Fan, Mode, Profile, Baseline, Diagnostics, FactoryReset };
 
 struct ApiContext {
     ApiRoute route;
@@ -53,6 +53,21 @@ struct ModeRequest {
 
 struct ResetRequest {
     bool confirm;
+};
+
+struct BaselineRequest {
+    int32_t luxMedianMilli;
+    int32_t luxMadMilli;
+    int32_t soundMedianMicro;
+    int32_t soundMadMicro;
+    int32_t samples;
+};
+static const struct json_obj_descr kBaselineFields[] = {
+    JSON_OBJ_DESCR_PRIM(BaselineRequest, luxMedianMilli, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(BaselineRequest, luxMadMilli, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(BaselineRequest, soundMedianMicro, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(BaselineRequest, soundMadMicro, JSON_TOK_NUMBER),
+    JSON_OBJ_DESCR_PRIM(BaselineRequest, samples, JSON_TOK_NUMBER),
 };
 
 struct ProfileRequest {
@@ -134,6 +149,7 @@ ApiContext kLightContext{ApiRoute::Light};
 ApiContext kFanContext{ApiRoute::Fan};
 ApiContext kModeContext{ApiRoute::Mode};
 ApiContext kProfileContext{ApiRoute::Profile};
+ApiContext kBaselineContext{ApiRoute::Baseline};
 ApiContext kDiagnosticsContext{ApiRoute::Diagnostics};
 ApiContext kResetContext{ApiRoute::FactoryReset};
 constexpr int kLightRequiredFields = BIT(0) | BIT(1) | BIT(2);
@@ -330,6 +346,25 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
         case ApiRoute::Diagnostics:
             ret = GetThreadRest()->BuildDiagnosticsJson(context->response, sizeof(context->response));
             break;
+        case ApiRoute::Baseline:
+            if (isPost) {
+                context->request[context->requestLength] = '\0';
+                BaselineRequest payload{};
+                const int parsed = json_obj_parse(context->request, context->requestLength,
+                    kBaselineFields, ARRAY_SIZE(kBaselineFields), &payload);
+                EnvironmentBaseline baseline;
+                baseline.luxMedian = payload.luxMedianMilli / 1000.0f;
+                baseline.luxMad = payload.luxMadMilli / 1000.0f;
+                baseline.soundMedian = payload.soundMedianMicro / 1000000.0f;
+                baseline.soundMad = payload.soundMadMicro / 1000000.0f;
+                baseline.samples = payload.samples > 0 ? static_cast<uint32_t>(payload.samples) : 0;
+                ret = parsed == BIT_MASK(ARRAY_SIZE(kBaselineFields))
+                    ? GetSystem()->UpdateEnvironmentBaseline(baseline) : -EINVAL;
+                context->requestLength = 0;
+            } else {
+                ret = GetThreadRest()->BuildBaselineJson(context->response, sizeof(context->response));
+            }
+            break;
         case ApiRoute::Profile:
             if (isPost) {
                 context->request[context->requestLength] = '\0';
@@ -425,7 +460,7 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
         body = "{\"ok\":false,\"error\":\"request failed\"}";
         bodyLength = strlen(body);
     } else if (context->route == ApiRoute::Status || context->route == ApiRoute::Diagnostics ||
-               (context->route == ApiRoute::Profile && !isPost)) {
+               ((context->route == ApiRoute::Profile || context->route == ApiRoute::Baseline) && !isPost)) {
         body = context->response;
         bodyLength = strlen(context->response);
     }
@@ -446,6 +481,7 @@ API_RESOURCE_DETAIL(statusDetail, BIT(HTTP_GET) | BIT(HTTP_OPTIONS), kStatusCont
 API_RESOURCE_DETAIL(lightDetail, BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kLightContext);
 API_RESOURCE_DETAIL(fanDetail, BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kFanContext);
 API_RESOURCE_DETAIL(modeDetail, BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kModeContext);
+API_RESOURCE_DETAIL(baselineDetail, BIT(HTTP_GET) | BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kBaselineContext);
 API_RESOURCE_DETAIL(profileDetail, BIT(HTTP_GET) | BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kProfileContext);
 API_RESOURCE_DETAIL(diagnosticsDetail, BIT(HTTP_GET) | BIT(HTTP_OPTIONS), kDiagnosticsContext);
 API_RESOURCE_DETAIL(resetDetail, BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kResetContext);
@@ -454,6 +490,7 @@ HTTP_RESOURCE_DEFINE(statusResource, sensoryshield_thread_rest, "/api/status", &
 HTTP_RESOURCE_DEFINE(lightResource, sensoryshield_thread_rest, "/api/light", &lightDetail);
 HTTP_RESOURCE_DEFINE(fanResource, sensoryshield_thread_rest, "/api/fan", &fanDetail);
 HTTP_RESOURCE_DEFINE(modeResource, sensoryshield_thread_rest, "/api/mode", &modeDetail);
+HTTP_RESOURCE_DEFINE(baselineResource, sensoryshield_thread_rest, "/api/environment-baseline", &baselineDetail);
 HTTP_RESOURCE_DEFINE(profileResource, sensoryshield_thread_rest, "/api/profile", &profileDetail);
 HTTP_RESOURCE_DEFINE(diagnosticsResource, sensoryshield_thread_rest, "/api/diagnostics", &diagnosticsDetail);
 HTTP_RESOURCE_DEFINE(resetResource, sensoryshield_thread_rest, "/api/factory-reset", &resetDetail);
@@ -520,7 +557,7 @@ int ThreadRest::BuildStatusJson(char* buffer, size_t bufferSize) const {
 
     int ret = FormatFixed(lux, sizeof(lux), snapshot.lux, 10U, 1U);
     if (ret == 0) {
-        ret = FormatFixed(soundEnergy, sizeof(soundEnergy), snapshot.sound.energy, 1000U, 3U);
+        ret = FormatFixed(soundEnergy, sizeof(soundEnergy), snapshot.sound.energy, 1000000U, 6U);
     }
     if (ret == 0) {
         ret = FormatFixed(sensoryScore, sizeof(sensoryScore), target.sensoryScore, 1000U, 3U);
@@ -532,7 +569,7 @@ int ThreadRest::BuildStatusJson(char* buffer, size_t bufferSize) const {
     const int written = snprintf(
         buffer, bufferSize,
         "{\"sensor\":{\"lux\":%s,\"occupied\":%s,\"soundEnergy\":%s,\"sensoryScore\":%s,"
-        "\"illuminanceValid\":%s,\"micValid\":%s,\"pirValid\":%s},"
+        "\"illuminanceValid\":%s,\"micValid\":%s,\"pirValid\":%s,\"soundTimestampMs\":%u,\"soundAgeMs\":%u},"
         "\"outputs\":{\"lightOn\":%s,\"brightnessPercent\":%u,\"cctMireds\":%u,"
         "\"rgbMode\":%s,\"red\":%u,\"green\":%u,\"blue\":%u,"
         "\"fanOn\":%s,\"fanPercent\":%u},"
@@ -540,13 +577,28 @@ int ThreadRest::BuildStatusJson(char* buffer, size_t bufferSize) const {
         "\"matter\":{\"commissioned\":%s,\"fabricCount\":%u,\"threadAttached\":%s},"
         "\"storage\":{\"appConfig\":true,\"deviceTable\":true}}}",
         lux, snapshot.occupied ? "true" : "false", soundEnergy, sensoryScore, snapshot.illuminanceValid ? "true" : "false",
-        snapshot.micValid ? "true" : "false", snapshot.pirValid ? "true" : "false", light.on ? "true" : "false",
+        snapshot.micValid ? "true" : "false", snapshot.pirValid ? "true" : "false",
+        snapshot.sound.timestampMs, k_uptime_get_32() - snapshot.sound.timestampMs, light.on ? "true" : "false",
         light.brightnessPercent, light.cctMireds, light.rgbMode ? "true" : "false", light.red, light.green, light.blue,
         fan.on ? "true" : "false", fan.speedPercent, GetSystem()->Ready() ? "true" : "false", mode,
         GetSystem()->OverrideRemainingSeconds(),
         k_uptime_get_32() / 1000U, APP_NAME, GetMatterBridge()->Commissioned() ? "true" : "false",
         GetMatterBridge()->FabricCount(), GetMatterBridge()->ThreadAttached() ? "true" : "false");
     return (written < 0 || static_cast<size_t>(written) >= bufferSize) ? -ENOMEM : 0;
+}
+
+int ThreadRest::BuildBaselineJson(char* buffer, size_t bufferSize) const {
+    if (buffer == nullptr || bufferSize == 0) return -EINVAL;
+    const auto baseline = GetSystem()->Baseline();
+    const bool configured = IsValidEnvironmentBaseline(baseline);
+    const int written = snprintf(buffer, bufferSize,
+        "{\"configured\":%s,\"luxMedianMilli\":%u,\"luxMadMilli\":%u,"
+        "\"soundMedianMicro\":%u,\"soundMadMicro\":%u,\"samples\":%u}",
+        configured ? "true" : "false", static_cast<unsigned int>(baseline.luxMedian * 1000 + .5f),
+        static_cast<unsigned int>(baseline.luxMad * 1000 + .5f),
+        static_cast<unsigned int>(baseline.soundMedian * 1000000 + .5f),
+        static_cast<unsigned int>(baseline.soundMad * 1000000 + .5f), baseline.samples);
+    return written < 0 || static_cast<size_t>(written) >= bufferSize ? -ENOMEM : 0;
 }
 
 int ThreadRest::BuildProfileJson(char* buffer, size_t bufferSize) const {

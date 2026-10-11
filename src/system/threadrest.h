@@ -17,6 +17,7 @@ class ThreadRest final {
     int HandleProfileUpdate(const AppConfig& config);
     int HandleFactoryReset();
     int BuildStatusJson(char* buffer, size_t bufferSize) const;
+    int BuildBaselineJson(char* buffer, size_t bufferSize) const;
     int BuildProfileJson(char* buffer, size_t bufferSize) const;
     int BuildDiagnosticsJson(char* buffer, size_t bufferSize) const;
 

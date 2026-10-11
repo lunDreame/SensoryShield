@@ -5,6 +5,8 @@ export interface SensorStatus {
   occupied: boolean;
   soundEnergy: number;
   sensoryScore: number;
+  soundTimestampMs?: number;
+  soundAgeMs?: number;
   illuminanceValid: boolean;
   micValid: boolean;
   pirValid: boolean;

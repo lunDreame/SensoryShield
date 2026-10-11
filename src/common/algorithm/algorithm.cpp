@@ -23,6 +23,12 @@ void Algorithm::SetConfig(const AppConfig& config) {
     mConfig = config;
 }
 
+void Algorithm::SetEnvironmentBaseline(const EnvironmentBaseline& baseline) {
+    mStimulusScorer.Reset();
+    mStimulusScorer.SetEnvironmentBaseline(baseline);
+    mSoundFan.SetEnvironmentBaseline(baseline);
+}
+
 StimulusScore Algorithm::EvaluateEnvironment(const SensorSnapshot& snapshot) {
     return mStimulusScorer.Evaluate(snapshot, mConfig);
 }

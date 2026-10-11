@@ -11,6 +11,8 @@ class Memory final {
         return mConfig;
     }
     int SaveConfig(const AppConfig& config);
+    int LoadEnvironmentBaseline(EnvironmentBaseline* baseline);
+    int SaveEnvironmentBaseline(const EnvironmentBaseline& baseline);
     int LoadRuntimeState(ControlMode* mode, ControlTarget* target);
     int SaveRuntimeState(ControlMode mode, const ControlTarget& target);
     int LoadDeviceTable(ChildDeviceDescriptor* devices, uint8_t maxDevices, uint8_t* count);

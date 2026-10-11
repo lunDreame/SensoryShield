@@ -16,6 +16,7 @@ float ValidWeight(float weight) {
 } // namespace
 
 void StimulusScorer::Reset() {
+    mReference = {};
     mLuxBaseline.Reset();
     mSoundBaseline.Reset();
 }
@@ -24,9 +25,11 @@ StimulusScore StimulusScorer::Evaluate(const SensorSnapshot& snapshot, const App
     float lightResidual = 0.0f;
     const bool validLux = snapshot.illuminanceValid && isfinite(snapshot.lux) && snapshot.lux >= 0.0f;
     if (validLux) {
-        lightResidual = PositiveResidual(mLuxBaseline, snapshot.lux, LuxNoiseFloor);
+        lightResidual = IsValidEnvironmentBaseline(mReference)
+            ? fmaxf(0.0f, snapshot.lux - mReference.luxMedian) / fmaxf(mReference.luxMad, LuxNoiseFloor)
+            : PositiveResidual(mLuxBaseline, snapshot.lux, LuxNoiseFloor);
         // Learn normal or darker conditions, while keeping sustained bright input visible as a stimulus.
-        if (!mLuxBaseline.Ready() || lightResidual <= BaselineLearningLimit) {
+        if (!IsValidEnvironmentBaseline(mReference) && (!mLuxBaseline.Ready() || lightResidual <= BaselineLearningLimit)) {
             mLuxBaseline.Add(snapshot.lux);
         }
     }
@@ -35,9 +38,11 @@ StimulusScore StimulusScorer::Evaluate(const SensorSnapshot& snapshot, const App
     const bool validSound = snapshot.micValid && snapshot.sound.valid && isfinite(snapshot.sound.energy) &&
                             snapshot.sound.energy >= 0.0f && snapshot.sound.energy <= 1.0f;
     if (validSound) {
-        soundResidual = PositiveResidual(mSoundBaseline, snapshot.sound.energy, SoundNoiseFloor);
+        soundResidual = IsValidEnvironmentBaseline(mReference)
+            ? fmaxf(0.0f, snapshot.sound.energy - mReference.soundMedian) / fmaxf(mReference.soundMad, SoundNoiseFloor)
+            : PositiveResidual(mSoundBaseline, snapshot.sound.energy, SoundNoiseFloor);
         // Sustained noise must not disappear into the learned quiet baseline.
-        if (!mSoundBaseline.Ready() || soundResidual <= BaselineLearningLimit) {
+        if (!IsValidEnvironmentBaseline(mReference) && (!mSoundBaseline.Ready() || soundResidual <= BaselineLearningLimit)) {
             mSoundBaseline.Add(snapshot.sound.energy);
         }
     }

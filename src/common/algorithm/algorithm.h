@@ -11,6 +11,7 @@ class Algorithm final {
 
     int Initialize(const AppConfig& config);
     void SetConfig(const AppConfig& config);
+    void SetEnvironmentBaseline(const EnvironmentBaseline& baseline);
     // Observe the environment in every mode; automatic output evaluation is separate.
     StimulusScore EvaluateEnvironment(const SensorSnapshot& snapshot);
     ControlTarget Evaluate(const SensorSnapshot& snapshot, const StimulusScore& stimulus);
