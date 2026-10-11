@@ -23,15 +23,17 @@ void Algorithm::SetConfig(const AppConfig& config) {
     mConfig = config;
 }
 
-ControlTarget Algorithm::Evaluate(const SensorSnapshot& snapshot) {
+StimulusScore Algorithm::EvaluateEnvironment(const SensorSnapshot& snapshot) {
+    return mStimulusScorer.Evaluate(snapshot, mConfig);
+}
+
+ControlTarget Algorithm::Evaluate(const SensorSnapshot& snapshot, const StimulusScore& stimulus) {
     SensorSnapshot effectiveSnapshot = snapshot;
     const uint32_t now = k_uptime_get_32();
     if (snapshot.pirValid && !snapshot.occupied && snapshot.lastMotionMs != 0U &&
         (now - snapshot.lastMotionMs) <= mConfig.occupancyTimeoutMs) {
         effectiveSnapshot.occupied = true;
     }
-
-    const StimulusScore stimulus = mStimulusScorer.Evaluate(effectiveSnapshot, mConfig);
 
     ControlTarget target = mPreviousTarget;
     target.sensoryScore = stimulus.combined;

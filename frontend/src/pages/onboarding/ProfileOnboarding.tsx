@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { saveProfile } from "../../shared/api/client";
+import { ENVIRONMENT_SAMPLE_COUNT, measureEnvironment, type EnvironmentMeasurement } from "../../features/measure-environment/measureEnvironment";
 import type { AppConfig } from "../../shared/types/domain";
 
 type Level = "low" | "medium" | "high";
@@ -35,6 +36,10 @@ export function ProfileOnboarding({ initialConfig, onComplete }: ProfileOnboardi
   const [lightSensitivity, setLightSensitivity] = useState<Level>("medium");
   const [soundSensitivity, setSoundSensitivity] = useState<Level>("medium");
   const [lightPreference, setLightPreference] = useState<LightPreference>("balanced");
+  const [useDefaults, setUseDefaults] = useState(false);
+  const [measurement, setMeasurement] = useState<EnvironmentMeasurement | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [measuring, setMeasuring] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -46,11 +51,25 @@ export function ProfileOnboarding({ initialConfig, onComplete }: ProfileOnboardi
     profileConfigured: true
   }), [initialConfig, lightPreference, lightSensitivity, soundSensitivity]);
 
-  async function finish(config = result) {
+  async function measure() {
+    setMeasuring(true);
+    setMeasurement(null);
+    setProgress(0);
+    setError(null);
+    try {
+      setMeasurement(await measureEnvironment(setProgress));
+    } catch (error) {
+      setError(error instanceof Error && /[가-힣]/.test(error.message) ? error.message : "측정하지 못했어요. 기기 연결을 확인하고 다시 시도해 주세요.");
+    } finally {
+      setMeasuring(false);
+    }
+  }
+
+  async function finish(config = useDefaults ? { ...initialConfig, profileConfigured: true } : result) {
     setPending(true);
     setError(null);
     try {
-      await saveProfile(config);
+      if (!(await saveProfile(config)).ok) throw new Error("rejected");
       onComplete(config);
     } catch {
       setError("기기에 설정을 저장하지 못했어요. 기기 연결을 확인한 뒤 다시 시도해 주세요.");
@@ -85,10 +104,10 @@ export function ProfileOnboarding({ initialConfig, onComplete }: ProfileOnboardi
           <img src="/brand/sensoryshield-logo.png" alt="SensoryShield" />
         </div>
         <div className="onboarding-progress-row">
-          <div className="onboarding-progress" aria-label={`${step + 1}단계, 전체 3단계`}>
-            {[0, 1, 2].map((index) => <i className={index <= step ? "active" : ""} key={index} />)}
+          <div className="onboarding-progress" aria-label={`${step + 1}단계, 전체 4단계`}>
+            {[0, 1, 2, 3].map((index) => <i className={index <= step ? "active" : ""} key={index} />)}
           </div>
-          <span>{step + 1} / 3</span>
+          <span>{step + 1} / 4</span>
         </div>
 
         {step < 2 ? (
@@ -111,7 +130,7 @@ export function ProfileOnboarding({ initialConfig, onComplete }: ProfileOnboardi
               ))}
             </div>
           </>
-        ) : (
+        ) : step === 2 ? (
           <>
             <span className="onboarding-kicker">나에게 맞는 환경 찾기</span>
             <h1 id="onboarding-title">어떤 조명이 가장 편안한가요?</h1>
@@ -135,17 +154,52 @@ export function ProfileOnboarding({ initialConfig, onComplete }: ProfileOnboardi
               ))}
             </div>
           </>
+        ) : (
+          <>
+            <span className="onboarding-kicker">우리 집의 평소 환경 확인</span>
+            <h1 id="onboarding-title">평소 환경을 측정해 주세요</h1>
+            <p className="onboarding-description">실제 사용할 자리에서 평소의 밝기와 주변 소리를 확인해요. 아래 준비를 마친 뒤 측정을 시작해 주세요.</p>
+            <div className="measurement-guide">
+              <h2>측정 전 준비</h2>
+              <ol>
+                <li><b>기기와 센서를 실제 사용할 위치에 놓아 주세요.</b> 조도 센서와 마이크를 손이나 물건으로 가리지 말고, 위치와 방향을 정해 주세요.</li>
+                <li><b>평소 사용하는 조명과 주변 소리를 유지해 주세요.</b> 커튼과 실내 조명은 평소 상태로 두고, TV나 음악은 일상적으로 사용하는 정도로 맞춰 주세요. 공사 소리처럼 일시적인 큰 소리가 있다면 잦아든 뒤 측정해 주세요.</li>
+                <li><b>기기의 조명과 팬은 측정 직전 상태로 유지됩니다.</b> 측정 중 자동 조절을 잠시 멈추며, 끝나면 이전 작동 방식으로 돌아가요.</li>
+              </ol>
+              <h2>측정 중에는 이렇게 해 주세요</h2>
+              <ul>
+                <li>기기·센서·팬을 옮기거나 센서를 가리지 마세요.</li>
+                <li>손전등을 비추거나 박수를 치는 등 테스트 자극을 주지 마세요.</li>
+                <li>조명·커튼·팬 속도를 바꾸거나 웹·SmartThings에서 기기를 조작하지 마세요.</li>
+                <li>주변 환경이 갑자기 달라졌다면 안정된 뒤 다시 측정해 주세요.</li>
+              </ul>
+              <p className="measurement-note">측정은 약 10초 이상 걸리며 연결 상태에 따라 더 길어질 수 있어요. 이 결과는 평소 환경을 비교하기 위한 자료이며, 밝기나 소음이 적절하거나 편안한 수준인지 판정하는 결과는 아닙니다.</p>
+            </div>
+            <div className="measurement-status" role="status" aria-live="polite">
+              {measuring ? <><b>평소 환경을 측정하고 있어요</b><progress value={progress} max={ENVIRONMENT_SAMPLE_COUNT} /><span>측정 중에는 현재 환경을 유지하고, 화면을 닫거나 새로고침하지 마세요.</span></> : measurement ? <><b>측정이 완료됐어요</b><span>평소 밝기: {measurement.luxMedian.toFixed(1)} lx</span><span>평소 소리: {(measurement.soundMedian * 100).toFixed(1)}% · 마이크 상대 입력, dB 아님</span><span>현재 측정 결과는 이 화면에서만 확인할 수 있으며, 기기의 자동 조절 기준으로 저장되지는 않아요.</span></> : <span>준비가 끝나면 아래 버튼을 눌러 주세요.</span>}
+            </div>
+            <button className={`button measurement-start${measuring ? " is-measuring" : ""}`} type="button" disabled={measuring || pending} onClick={() => void measure()}>
+              <span className="measurement-start-icon" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M8 3H5a2 2 0 0 0-2 2v3m13-5h3a2 2 0 0 1 2 2v3M3 16v3a2 2 0 0 0 2 2h3m8 0h3a2 2 0 0 0 2-2v-3" />
+                  <path d="M7 12h2l2-4 2 8 2-4h2" />
+                </svg>
+              </span>
+              <span className="measurement-start-copy"><b>{measuring ? "평소 환경 측정 중" : measurement || error ? "평소 환경 다시 측정" : "평소 환경 측정 시작"}</b><small>{measuring ? "잠시만 기다려 주세요" : "준비를 마쳤다면 눌러 주세요"}</small></span>
+              <span className="measurement-start-arrow" aria-hidden="true">{measuring ? "···" : "→"}</span>
+            </button>
+          </>
         )}
 
         {error ? <div className="notice notice-error onboarding-error" role="alert"><i className="notice-dot" />{error}</div> : null}
         <div className="onboarding-actions">
-          {step > 0 ? <button className="button button-neutral" type="button" disabled={pending} onClick={() => setStep(step - 1)}>이전</button> : (
-            <button className="button button-neutral" type="button" disabled={pending} onClick={() => void finish({ ...initialConfig, profileConfigured: true })}>기본 설정으로 시작</button>
+          {step > 0 ? <button className="button button-neutral" type="button" disabled={pending || measuring} onClick={() => { setError(null); setStep(useDefaults ? 0 : step - 1); setUseDefaults(false); setMeasurement(null); }}>이전</button> : (
+            <button className="button button-neutral" type="button" disabled={pending} onClick={() => { setUseDefaults(true); setStep(3); }}>기본 설정으로 시작</button>
           )}
-          {step < 2 ? (
-            <button className="button button-primary" type="button" onClick={() => setStep(step + 1)}>다음</button>
+          {step < 3 ? (
+            <button className="button button-primary" type="button" onClick={() => { setError(null); setStep(step + 1); }}>다음</button>
           ) : (
-            <button className="button button-primary" type="button" disabled={pending} onClick={() => void finish()}>{pending ? "저장 중" : "설정 완료"}</button>
+            <button className="button button-primary" type="button" disabled={pending || measuring || !measurement} onClick={() => void finish()}>{pending ? "저장 중" : "설정 완료"}</button>
           )}
         </div>
       </section>

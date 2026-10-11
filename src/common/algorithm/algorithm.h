@@ -11,7 +11,9 @@ class Algorithm final {
 
     int Initialize(const AppConfig& config);
     void SetConfig(const AppConfig& config);
-    ControlTarget Evaluate(const SensorSnapshot& snapshot);
+    // Observe the environment in every mode; automatic output evaluation is separate.
+    StimulusScore EvaluateEnvironment(const SensorSnapshot& snapshot);
+    ControlTarget Evaluate(const SensorSnapshot& snapshot, const StimulusScore& stimulus);
 
     Algorithm(const Algorithm&) = delete;
     Algorithm& operator=(const Algorithm&) = delete;
