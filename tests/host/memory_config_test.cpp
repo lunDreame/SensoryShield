@@ -44,14 +44,20 @@ int main() {
     config.preferredCCTMireds = 250;
     config.preferredBrightness = 60;
     config.preferredFanPercent = 40;
+    config.normalCCTMireds = 370; config.reliefFanPercent = 0;
+    config.reliefHoldMs = 10000; config.recoverConfirmMs = 5000;
     config.lightWeight = 0.8f;
     config.profileConfigured = true;
+    config.occupancyAutomationEnabled = false;
     assert(memory.SaveConfig(config) == 0);
     memory.Initialize();
     assert(memory.Config().preferredCCTMireds == 250);
     assert(memory.Config().preferredBrightness == 60);
     assert(memory.Config().preferredFanPercent == 40);
+    assert(memory.Config().normalCCTMireds == 370 && memory.Config().reliefFanPercent == 0);
+    assert(memory.Config().reliefHoldMs == 10000 && memory.Config().recoverConfirmMs == 5000);
     assert(memory.Config().profileConfigured);
+    assert(!memory.Config().occupancyAutomationEnabled);
     assert(memory.Config().lightWeight == 0.8f);
     config.minCCTMireds = 300;
     config.maxCCTMireds = 400;
@@ -76,6 +82,7 @@ int main() {
     assert(memory.Config().fanMaxPercent == 80);
     assert(memory.Config().profileConfigured);
     assert(memory.Config().occupancyTimeoutMs == 60000);
+    assert(memory.Config().occupancyAutomationEnabled);
     ChildDeviceDescriptor device = {1, 1, true, 3, "light"};
     memory.SaveDeviceTable(&device, 1);
     uint32_t oldVersion = LEGACY_CONFIG_VERSION;
@@ -109,15 +116,39 @@ int main() {
     assert(memory.SaveSetup(updated, initial) == -EINVAL);
     assert(memory.InitialBaseline().sound[3] < 1);
     // v6 used the same record size, but its byte 29 was padding, not a fan preference.
-    struct SetupRecord { AppConfig config; InitialEnvironment initial; } oldSetup{memory.Config(), memory.InitialBaseline()};
-    static_assert(sizeof(AppConfig) == 32, "Preserve v6 storage offsets");
+    struct OldSetupRecord { unsigned char config[32]; InitialEnvironment initial; } oldSetup{};
+    static_assert(offsetof(AppConfig, normalCCTMireds) == 32, "Preserve v6/v7 storage offsets");
     static_assert(offsetof(AppConfig, preferredFanPercent) == 29, "v6 padding migration offset changed");
-    oldSetup.config.version = SETUP_CONFIG_VERSION;
-    oldSetup.config.preferredFanPercent = 255;
+    auto oldConfig = memory.Config(); oldConfig.version = SETUP_CONFIG_VERSION;
+    oldConfig.preferredFanPercent = 255;
+    memcpy(oldSetup.config, &oldConfig, 32); oldSetup.initial = memory.InitialBaseline();
     settings_save_one("sensoryshield/app_config", &oldSetup, sizeof(oldSetup));
     memory.Initialize();
     assert(memory.Config().preferredFanPercent == 60 && memory.InitialBaseline().Valid());
     assert(memory.Config().preferredBrightness == 60);
+    assert(memory.Config().normalCCTMireds == memory.Config().minCCTMireds);
+    assert(memory.Config().reliefFanPercent == 20 && memory.Config().reliefHoldMs == 1500 && memory.Config().recoverConfirmMs == 2500);
+    // v7 retains its chosen outputs and old observation offsets; old padding isn't a new preference.
+    oldConfig.version = OUTPUT_CONFIG_VERSION; oldConfig.preferredFanPercent = 40;
+    memcpy(oldSetup.config, &oldConfig, 32); oldSetup.config[30] = 255; oldSetup.config[31] = 255;
+    settings_save_one("sensoryshield/app_config", &oldSetup, sizeof(oldSetup)); memory.Initialize();
+    assert(memory.Config().preferredBrightness == 60 && memory.Config().preferredFanPercent == 40);
+    assert(memory.Config().normalCCTMireds == oldConfig.minCCTMireds && memory.InitialBaseline().lux[30] == 130);
+    assert(memory.Config().reliefFanPercent == 20 && memory.Config().recoverConfirmMs == 2500);
+    // v8 had a 44-byte config. New defaults must not consume bytes from initial observations.
+    struct SetupV8 { unsigned char config[44]; InitialEnvironment initial; } v8{};
+    auto oldV8=memory.Config(); oldV8.version=RELIEF_CONFIG_VERSION;
+    oldV8.normalCCTMireds=370; oldV8.reliefFanPercent=0; oldV8.recoverConfirmMs=5000;
+    memcpy(v8.config,&oldV8,44); v8.initial=memory.InitialBaseline();
+    settings_save_one("sensoryshield/app_config",&v8,sizeof(v8)); memory.Initialize();
+    assert(memory.Config().occupancyAutomationEnabled);
+    assert(memory.Config().normalCCTMireds==370 && memory.Config().reliefFanPercent==0);
+    assert(memory.Config().recoverConfirmMs==5000 && memory.InitialBaseline().lux[30]==130);
+    oldVersion=RELIEF_CONFIG_VERSION;
+    memcpy(storage["sensoryshield/device_table"].data(),&oldVersion,sizeof(oldVersion));
+    memcpy(storage["sensoryshield/runtime_state"].data(),&oldVersion,sizeof(oldVersion));
+    assert(memory.LoadDeviceTable(&restored,1,&count)==0 && count==1);
+    assert(memory.LoadRuntimeState(&mode,&target)==0 && mode==ControlMode::Manual);
     // A v5 record preserves tone and inherits its previous automatic return brightness.
     auto previous = memory.Config(); previous.version = PREVIOUS_CONFIG_VERSION;
     settings_save_one("sensoryshield/app_config", &previous, 28);
@@ -127,6 +158,7 @@ int main() {
     assert(!memory.InitialBaseline().Valid());
     assert(memory.FactoryReset() == 0);
     assert(!memory.InitialBaseline().Valid());
+    assert(memory.Config().occupancyAutomationEnabled);
     assert(memory.Config().preferredCCTMireds == 333);
     puts("preferred tone persistence, v4 migration and existing device/runtime records passed");
 }

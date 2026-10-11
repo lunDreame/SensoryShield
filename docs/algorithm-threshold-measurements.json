@@ -1,0 +1,71 @@
+{
+  "kind": "synthetic_characterization_of_current_production_policies",
+  "clinical_validation": false,
+  "boundary_conditions": "constant 100 lx / RMS 0.01 baseline; other channel unchanged; stable outputs; 250 ms fresh inputs; lighting confirmed for 750 ms",
+  "light_entry_sweep_resolution_lux": 0.01,
+  "sound_to_light_sweep_resolution_rms": 1e-05,
+  "sound_to_fan_sweep_resolution_rms": 0.0001,
+  "sensitivity_rows": [
+    {
+      "level": "low",
+      "light_gain": 0.3,
+      "sound_gain": 0.25,
+      "light_only_entry_delta_lux": 9.34,
+      "light_entry_target_brightness_percent": 98,
+      "sound_only_light_entry_delta_rms": 0.014,
+      "fan_quiet_entry_delta_rms": 0.014
+    },
+    {
+      "level": "medium",
+      "light_gain": 0.55,
+      "sound_gain": 0.45,
+      "light_only_entry_delta_lux": 5.1,
+      "light_entry_target_brightness_percent": 98,
+      "sound_only_light_entry_delta_rms": 0.00778,
+      "fan_quiet_entry_delta_rms": 0.0078
+    },
+    {
+      "level": "high",
+      "light_gain": 0.8,
+      "sound_gain": 0.75,
+      "light_only_entry_delta_lux": 3.5,
+      "light_entry_target_brightness_percent": 98,
+      "sound_only_light_entry_delta_rms": 0.00467,
+      "fan_quiet_entry_delta_rms": 0.0047
+    }
+  ],
+  "first_score_using_full_baseline_sample_number": 32,
+  "external_dark_30s_then_restore_60s": {
+    "median_after_dark_lux": 100.0,
+    "median_after_restore_lux": 100.0,
+    "final_score": 0.0,
+    "large_decrease_excluded": true
+  },
+  "constant_high_input_since_boot": {
+    "lux": 1000,
+    "rms": 0.2,
+    "final_score": 0.0,
+    "comfort_is_not_inferred": true
+  },
+  "small_sustained_step_100_to_104_lux": {
+    "final_baseline_lux": 100.0,
+    "final_score": 1.1,
+    "observation_only_not_learned": true
+  },
+  "git_head": "231d607289e296d59dbe98719820c93e0b1c6d99",
+  "source_sha256": {
+    "src/definition.h": "f0dcf013fa4f6c0fef3903b1a8f64428eb2c3141d958e7a321c50c56d437a2a2",
+    "src/common/algorithm/baseline.cpp": "7b60d1654484b81b4278b7a34f84ffe6b834d9669ec25794f64105aac95f415b",
+    "src/common/algorithm/stimulus_score.h": "2b49e89de8f09a592c95efca5bea3cd770dd70cb8c5de18b4d6f80001e848010",
+    "src/common/algorithm/stimulus_score.cpp": "f414912378a48596f137a9857e19c834558b21e3c263184a74897af37337bd1f",
+    "src/common/algorithm/stimulus_policy.h": "a234a09ffa50959c89a5bab22c6b1ea5d384ce85759909b591a528be10d437e2",
+    "src/common/algorithm/algorithm.cpp": "e9f7014819b2b1c810b7c56abbc0846aaa4db5e0fee0a1a69b21095943aa6ae7",
+    "src/common/algorithm/output_aware_inputs.h": "97a1c4238d90ba1d6e1853efb1840b1f7fa44b8d029f5ad130af6a52a80732fb",
+    "src/common/algorithm/recovery_guard.h": "f4b60fb0b20a9775740f2058cffe71116404ca99f4e261159aa1a8fcab262bce",
+    "src/common/algorithm/light_presence.h": "90a80f0664c00b55b3a5b41b0a86196aad071335485c1e99099a61c88b3c00e1",
+    "src/common/algorithm/light_presence.cpp": "14436b35cc88052c4b874ac935a8a8285b2992fe0c3a11c3c9b63c760fbb5507",
+    "src/common/algorithm/sound_fan.h": "99537b7617b6c9b6a8fbfe6754adac9678f25b9fd16811b41c7384481fb1ecf2",
+    "tests/host/threshold_review.cpp": "e162770d9b23cfb8d494b85eb4e607d46c7f2ce34cdf862c582386267cdf52a5",
+    "frontend/src/pages/onboarding/ProfileOnboarding.tsx": "33d0b05d56336dea9544790d9c50d2c2ac405fd0e14b61fea0bf9f488e1d70de"
+  }
+}

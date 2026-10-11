@@ -43,10 +43,9 @@ int main() {
     for (int i = 0; i < 31; ++i) scorer.Evaluate(input, config);
     assert(scorer.LightBaselineMedian() == 101);
     SoundFanController fan;
-    fan.SeedEnvironment(measurement.Data());
-    assert(fan.Evaluate(input, config, input.sound.timestampMs) == AUTO_FAN_QUIET_PERCENT);
+    assert(fan.Evaluate(input, config, scorer.Evaluate(input, config), input.sound.timestampMs) == AUTO_FAN_NORMAL_PERCENT);
     input.sound.timestampMs += ALGORITHM_PERIOD_MS;
-    assert(fan.Evaluate(input, config, input.sound.timestampMs) > AUTO_FAN_QUIET_PERCENT);
+    assert(fan.Evaluate(input, config, scorer.Evaluate(input, config), input.sound.timestampMs) > AUTO_FAN_QUIET_PERCENT);
     measurement.Invalidate();
     assert(measurement.State() == MeasurementState::Ready && measurement.Data().Valid()); // Experience commands preserve the pre-trial record.
     assert(measurement.Data().lux[0] == 99);

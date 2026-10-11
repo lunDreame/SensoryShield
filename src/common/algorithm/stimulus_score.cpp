@@ -1,4 +1,5 @@
 #include "common/algorithm/stimulus_score.h"
+#include "common/algorithm/stimulus_policy.h"
 
 #include <math.h>
 
@@ -20,16 +21,20 @@ void StimulusScorer::Reset() {
     mSoundBaseline.Reset();
 }
 
+bool StimulusScorer::RebaseLight(float lux) {
+    if (!isfinite(lux) || lux < 0.0f) return false;
+    mLuxBaseline.Reset();
+    mLuxBaseline.Add(lux);
+    return true;
+}
+
 StimulusScore StimulusScorer::Evaluate(const SensorSnapshot& snapshot, const AppConfig& config) {
     const bool wasReady = mLuxBaseline.Ready() && mSoundBaseline.Ready();
+    const bool soundWasReady = mSoundBaseline.Ready();
     float lightResidual = 0.0f;
     const bool validLux = snapshot.illuminanceValid && isfinite(snapshot.lux) && snapshot.lux >= 0.0f;
     if (validLux) {
         lightResidual = PositiveResidual(mLuxBaseline, snapshot.lux, LuxNoiseFloor);
-        // Learn normal or darker conditions, while keeping sustained bright input visible as a stimulus.
-        if (snapshot.learnLight && (!mLuxBaseline.Ready() || lightResidual <= BaselineLearningLimit)) {
-            mLuxBaseline.Add(snapshot.lux);
-        }
     }
 
     float soundResidual = 0.0f;
@@ -37,17 +42,23 @@ StimulusScore StimulusScorer::Evaluate(const SensorSnapshot& snapshot, const App
                             snapshot.sound.energy >= 0.0f && snapshot.sound.energy <= 1.0f;
     if (validSound) {
         soundResidual = PositiveResidual(mSoundBaseline, snapshot.sound.energy, SoundNoiseFloor);
-        // Sustained noise must not disappear into the learned quiet baseline.
-        if (snapshot.learnSound && (!mSoundBaseline.Ready() || soundResidual <= BaselineLearningLimit)) {
-            mSoundBaseline.Add(snapshot.sound.energy);
-        }
     }
 
     const float lightScore = lightResidual * ValidWeight(config.lightWeight);
     const float soundScore = soundResidual * ValidWeight(config.soundWeight);
     const float combined = ClampValue(lightScore + soundScore, 0.0f, MaximumScore);
+    // Admission uses weighted units with a narrower boundary than relief. Absolute
+    // change keeps a large fall from redefining the baseline; displayed/control
+    // scores still count increases only. Admission happens before adding samples.
+    const float lightDistance = validLux && mLuxBaseline.HasSamples()
+        ? fabsf(snapshot.lux - mLuxBaseline.Median()) / mLuxBaseline.Mad(LuxNoiseFloor) * ValidWeight(config.lightWeight) : 0;
+    const float soundDistance = validSound && mSoundBaseline.HasSamples()
+        ? fabsf(snapshot.sound.energy - mSoundBaseline.Median()) / mSoundBaseline.Mad(SoundNoiseFloor) * ValidWeight(config.soundWeight) : 0;
+    const bool ordinary = lightDistance + soundDistance <= StimulusPolicy::LearnScore;
+    if (validLux && snapshot.learnLight && ordinary) mLuxBaseline.Add(snapshot.lux);
+    if (validSound && snapshot.learnSound && ordinary) mSoundBaseline.Add(snapshot.sound.energy);
     // Report readiness for the baselines used to calculate this score, before this sample was learned.
     return {lightScore, soundScore, combined,
             validLux && validSound && mLuxBaseline.Ready() && mSoundBaseline.Ready() &&
-            wasReady};
+            wasReady, validSound && soundWasReady};
 }

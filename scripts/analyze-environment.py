@@ -52,7 +52,7 @@ def render_plots(directory, cases):
                   [float(row[column]) for row in rows], label=label, color=color, linewidth=1.6)
 
     fig, axes = plt.subplots(3, 1, figsize=(11, 9), constrained_layout=True)
-    fig.suptitle("수정한 C++ 알고리즘: 출력 변경을 분리하고 안정적으로 복귀", fontsize=18, fontweight="bold")
+    fig.suptitle("수정한 C++ 알고리즘: 현재 환경을 판단하고 반복 복귀를 방지", fontsize=18, fontweight="bold")
     prefix = "closed-loop-p100-k0.5-"
     line(axes[0], prefix+"learn", "applied_brightness", "현재 자동 학습", blue, 60, 65)
     line(axes[0], prefix+"freeze", "applied_brightness", "시험용 기준 고정", orange, 60, 65)
@@ -115,6 +115,10 @@ def main():
                 assert summary["last60s_min_brightness"] == summary["preferred_brightness"], summary
             if summary["case"].startswith("manual-return-"):
                 assert abs(summary["initial_baseline_lux"] - summary["final_baseline_lux"]) < .001, summary
+            if summary["case"].startswith("dim-restore-"):
+                assert summary["final_baseline_lux"] == summary["initial_baseline_lux"], summary
+                assert summary["final_score"] == 0, summary
+                assert summary["last60s_min_brightness"] == summary["preferred_brightness"], summary
         print(f"Steady output and recovery assertions passed: {len(summaries)} cases")
     with (args.directory/"summary.csv").open("w") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(summaries[0]))

@@ -2,6 +2,7 @@
 
 #include <errno.h>
 #include <string.h>
+#include <stddef.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/settings/settings.h>
 #include <zephyr/sys/util.h>
@@ -13,6 +14,10 @@ LOG_MODULE_REGISTER(memory, LOG_LEVEL_INF);
 #define DEVICE_TABLE_KEY "sensoryshield/device_table"
 
 struct StoredSetup { AppConfig config; InitialEnvironment initial; };
+struct StoredSetupV8 { unsigned char config[44]; InitialEnvironment initial; };
+static_assert(offsetof(AppConfig, occupancyAutomationEnabled) == 44, "Preserve v8 config offsets");
+struct StoredSetupV7 { unsigned char config[32]; InitialEnvironment initial; };
+static_assert(offsetof(AppConfig, normalCCTMireds) == 32, "Preserve old config offsets");
 
 struct StoredDeviceTable {
     uint32_t version;
@@ -59,6 +64,11 @@ static AppConfig NormalizeConfig(AppConfig config) {
     config.minCCTMireds = ClampValue<uint16_t>(config.minCCTMireds, 1, 1000);
     config.maxCCTMireds = ClampValue<uint16_t>(config.maxCCTMireds, config.minCCTMireds, 1000);
     config.preferredCCTMireds = ClampValue<uint16_t>(config.preferredCCTMireds, config.minCCTMireds, config.maxCCTMireds);
+    config.normalCCTMireds = ClampValue<uint16_t>(config.normalCCTMireds, config.minCCTMireds, config.maxCCTMireds);
+    config.reliefFanPercent = ClampValue<uint8_t>(config.reliefFanPercent, 0, 100);
+    if (config.reliefFanPercent > 0 && config.reliefFanPercent < FAN_MIN_DUTY_PERCENT) config.reliefFanPercent = FAN_MIN_DUTY_PERCENT;
+    config.reliefHoldMs = ClampValue<uint32_t>(config.reliefHoldMs, 0, 600000);
+    config.recoverConfirmMs = ClampValue<uint32_t>(config.recoverConfirmMs, 250, 60000);
     config.fanMaxPercent = ClampValue<uint8_t>(config.fanMaxPercent, 0, 100);
     config.preferredFanPercent = ClampValue<uint8_t>(config.preferredFanPercent, 0, config.fanMaxPercent);
     if (config.occupancyTimeoutMs < 1000U) {
@@ -103,12 +113,27 @@ int Memory::Initialize() {
         [](const char* key, size_t len, settings_read_cb readCb, void* cbArg, void* param) -> int {
             ARG_UNUSED(key);
             auto* context = static_cast<LoadContext*>(param);
-            // v4/v5 records were 28 bytes. Their common fields retain their offsets.
-            if (len != 28U && len != sizeof(StoredSetup)) return -EINVAL;
-            const auto bytes = readCb(cbArg, &context->setup, len);
-            if (bytes != static_cast<ssize_t>(len)) return -EINVAL;
-            if (len == 28U && context->setup.config.version != LEGACY_CONFIG_VERSION &&
-                context->setup.config.version != PREVIOUS_CONFIG_VERSION) return -EINVAL;
+            if (len == sizeof(StoredSetup)) {
+                const auto bytes = readCb(cbArg, &context->setup, len);
+                if (bytes != static_cast<ssize_t>(len) || context->setup.config.version != CONFIG_VERSION) return -EINVAL;
+            } else if (len == sizeof(StoredSetupV8)) {
+                StoredSetupV8 old{};
+                if (readCb(cbArg, &old, len) != static_cast<ssize_t>(len)) return -EINVAL;
+                memcpy(reinterpret_cast<unsigned char*>(&context->setup.config), old.config, sizeof(old.config));
+                if (context->setup.config.version != RELIEF_CONFIG_VERSION) return -EINVAL;
+                context->setup.initial = old.initial;
+            } else if (len == sizeof(StoredSetupV7)) {
+                StoredSetupV7 old{};
+                if (readCb(cbArg, &old, len) != static_cast<ssize_t>(len)) return -EINVAL;
+                memcpy(reinterpret_cast<unsigned char*>(&context->setup.config), old.config, sizeof(old.config));
+                if (context->setup.config.version != OUTPUT_CONFIG_VERSION && context->setup.config.version != SETUP_CONFIG_VERSION) return -EINVAL;
+                context->setup.initial = old.initial;
+                context->setup.config.normalCCTMireds = context->setup.config.minCCTMireds;
+            } else if (len == 28U) {
+                if (readCb(cbArg, &context->setup.config, len) != static_cast<ssize_t>(len)) return -EINVAL;
+                if (context->setup.config.version != LEGACY_CONFIG_VERSION && context->setup.config.version != PREVIOUS_CONFIG_VERSION) return -EINVAL;
+                context->setup.config.normalCCTMireds = context->setup.config.minCCTMireds;
+            } else return -EINVAL;
             context->read = true;
             return 0;
         }, &loaded);
@@ -125,6 +150,7 @@ int Memory::Initialize() {
         config.preferredFanPercent = AUTO_FAN_NORMAL_PERCENT;
         config.version = CONFIG_VERSION;
     }
+    if (config.version == OUTPUT_CONFIG_VERSION || config.version == RELIEF_CONFIG_VERSION) config.version = CONFIG_VERSION;
     mInitial = {};
     if (ret == 0 && loaded.read && config.version == CONFIG_VERSION) {
         mConfig = NormalizeConfig(config);
@@ -168,7 +194,7 @@ int Memory::LoadRuntimeState(ControlMode* mode, ControlTarget* target) {
         &state);
 
     const ControlMode storedMode = static_cast<ControlMode>(state.mode);
-    if (ret != 0 || (state.version != CONFIG_VERSION && state.version != LEGACY_CONFIG_VERSION && state.version != PREVIOUS_CONFIG_VERSION && state.version != SETUP_CONFIG_VERSION) ||
+    if (ret != 0 || (state.version != CONFIG_VERSION && state.version != LEGACY_CONFIG_VERSION && state.version != PREVIOUS_CONFIG_VERSION && state.version != SETUP_CONFIG_VERSION && state.version != OUTPUT_CONFIG_VERSION && state.version != RELIEF_CONFIG_VERSION) ||
         !IsValidMode(storedMode)) {
         if (ret == 0) {
             LOG_WRN("Stored runtime state is invalid, clearing");
@@ -224,7 +250,7 @@ int Memory::LoadDeviceTable(ChildDeviceDescriptor* devices, uint8_t maxDevices, 
         },
         &table);
 
-    if (ret == 0 && (table.version == CONFIG_VERSION || table.version == LEGACY_CONFIG_VERSION || table.version == PREVIOUS_CONFIG_VERSION || table.version == SETUP_CONFIG_VERSION) &&
+    if (ret == 0 && (table.version == CONFIG_VERSION || table.version == LEGACY_CONFIG_VERSION || table.version == PREVIOUS_CONFIG_VERSION || table.version == SETUP_CONFIG_VERSION || table.version == OUTPUT_CONFIG_VERSION || table.version == RELIEF_CONFIG_VERSION) &&
         IsValidDeviceTable(table.devices, table.count)) {
         *count = table.count > maxDevices ? maxDevices : table.count;
         memcpy(devices, table.devices, sizeof(ChildDeviceDescriptor) * (*count));

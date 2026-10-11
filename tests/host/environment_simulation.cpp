@@ -1,4 +1,5 @@
-#include "common/algorithm/stimulus_score.h"
+#include "common/algorithm/algorithm.h"
+uint32_t testUptimeMs = 0;
 #include "common/algorithm/light_presence.h"
 #include "common/algorithm/output_aware_inputs.h"
 #include <algorithm>
@@ -9,8 +10,8 @@
 #include <cstring>
 
 // Synthetic input and linear lamp-to-sensor coupling, not clinical/hardware measurements.
-// Runs the actual scorer and light policy; only the sensor/actuator schedule is modeled.
-// `freeze` evaluates a copy of the seeded scorer, discarding learning after each call.
+// Runs the actual Algorithm including learning/mode gates; only sensor/actuator timing is modeled.
+// `freeze` vetoes learning after seeding, without changing control input validity.
 // It is a counterfactual comparison in this executable, never a firmware setting.
 int main(int argc, char** argv) {
     if (argc < 2 || argc > 7) {
@@ -33,7 +34,7 @@ int main(int argc, char** argv) {
     if (!std::isfinite(coupling) || coupling < 0 || coupling > 10 || preferred < 1 || preferred > 100 ||
         minimum < 0 || minimum > preferred || sensorPhase < 0 || sensorPhase >= SENSOR_PERIOD_MS ||
         sensorPhase % ACTUATOR_RAMP_MS) return 2;
-    StimulusScorer scorer; LightPresenceController light; OutputAwareInputs observer; AppConfig config;
+    auto& algorithm = Algorithm::Instance(); AppConfig config;
     config.preferredBrightness = static_cast<uint8_t>(preferred);
     config.minBrightness = static_cast<uint8_t>(minimum);
     config.profileConfigured = true;
@@ -47,7 +48,8 @@ int main(int argc, char** argv) {
         initial.lux[i] = 100 + coupling * applied;
         initial.sound[i] = .01f;
     }
-    scorer.SeedEnvironment(initial);
+    algorithm.Initialize(config);
+    algorithm.SeedEnvironment(initial);
     SensorSnapshot snapshot = {initial.lux[0], {.01f, .01f, 0, 0, true}, true, 0, true, true, true};
     puts("time_ms,sensor_time_ms,mode,ambient_lux,lux,baseline_before_lux,baseline_lux,mad_lux,light_score,score,target_brightness,applied_brightness,sensor_brightness,cct_mireds,coupling,preferred_brightness,minimum_brightness,learning");
     for (uint32_t now = 0; now < 300000; now += ACTUATOR_RAMP_MS) {
@@ -59,32 +61,30 @@ int main(int argc, char** argv) {
         else if (closed || closedRestore) ambient += seconds >= 10 && (!closedRestore || seconds < 60) ? 10 : 0;
         const bool manual = manualReturn && now >= 10000 && now < 40000;
         // Manual light commands apply immediately in System::SetManualLight.
-        // Observation/learning still runs in manual, as in System::AlgorithmWork.
+        // Scoring runs in manual, but ordinary learning and controllers are paused.
         if (manualReturn && now == 10000) applied = targetBrightness = 25;
         if (now % SENSOR_PERIOD_MS == static_cast<uint32_t>(sensorPhase)) {
             snapshot.lux = ambient + coupling * applied;
             snapshot.sound.timestampMs = snapshot.observedAtMs = now;
-            snapshot.observedOutputs = {true, applied > 0, applied, appliedCct, false, 255, 255, 255, false, 0,
+            snapshot.observedOutputs = {true, applied > 0, applied, appliedCct, false, 255, 255, 255, true, config.preferredFanPercent,
                 applied == targetBrightness && appliedCct == targetCct, true};
             sensorBrightness = applied;
         }
-        if (manualReturn && now == 40000) light.Reset();
+        if (manualReturn && now == 40000) algorithm.ResetAutomaticLight();
         if (now % ALGORITHM_PERIOD_MS == 0) {
-            const float before = scorer.LightBaselineMedian();
-            const auto observed = observer.Observe(snapshot);
-            StimulusScore score;
-            if (frozen) {
-                auto probe = scorer;
-                score = probe.Evaluate(observed, config);
-            } else score = scorer.Evaluate(observed, config);
-            const auto target = light.Evaluate(observed, config, score.combined, now);
+            testUptimeMs = now;
+            const float before = algorithm.LightBaselineMedian();
+            snapshot.learnLight = snapshot.learnSound = !frozen;
+            const auto score = algorithm.EvaluateEnvironment(snapshot, !manual);
+            ControlTarget target{true,targetBrightness,targetCct,false,255,255,255,true,config.preferredFanPercent,score.combined};
+            if (!manual) target = algorithm.Evaluate(snapshot, score);
             assert(std::isfinite(score.combined) && score.combined >= 0 && score.combined <= STIMULUS_MAX_SCORE);
             assert(target.cctMireds >= config.minCCTMireds && target.cctMireds <= config.maxCCTMireds);
             assert(target.brightnessPercent >= config.minBrightness && target.brightnessPercent <= config.preferredBrightness);
             if (!manual) { targetBrightness = target.brightnessPercent; targetCct = target.cctMireds; }
             printf("%u,%u,%s,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%u,%u,%.0f,%u,%.4f,%u,%u,%s\n",
                    now, snapshot.sound.timestampMs, manual ? "manual" : "auto", ambient, snapshot.lux, before,
-                   scorer.LightBaselineMedian(), scorer.LightBaselineMad(), score.light, score.combined,
+                   algorithm.LightBaselineMedian(), algorithm.LightBaselineMad(), score.light, score.combined,
                    targetBrightness, applied, sensorBrightness, target.cctMireds, coupling,
                    config.preferredBrightness, config.minBrightness, learning);
         }

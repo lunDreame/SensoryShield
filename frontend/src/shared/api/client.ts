@@ -130,7 +130,7 @@ export function saveProfile(config: AppConfig, useMeasuredEnvironment = false): 
 export async function getProfile(): Promise<AppConfig> {
   const config = await request<AppConfig>("/api/profile");
   // Older firmware did not return a preferred tone. Preserve its allowed range.
-  return { ...config, preferredFanPercent: config.preferredFanPercent ?? Math.min(60, config.fanMaxPercent), preferredBrightness: config.preferredBrightness ?? config.maxBrightness, preferredCCTMireds: config.preferredCCTMireds ??
+  return { ...config, occupancyAutomationEnabled: config.occupancyAutomationEnabled ?? true, normalCCTMireds: config.normalCCTMireds ?? config.minCCTMireds, reliefFanPercent: config.reliefFanPercent ?? 20, reliefHoldMs: config.reliefHoldMs ?? 1500, recoverConfirmMs: config.recoverConfirmMs ?? 2500, preferredFanPercent: config.preferredFanPercent ?? Math.min(60, config.fanMaxPercent), preferredBrightness: config.preferredBrightness ?? config.maxBrightness, preferredCCTMireds: config.preferredCCTMireds ??
     Math.round((config.minCCTMireds + config.maxCCTMireds) / 2) };
 }
 
