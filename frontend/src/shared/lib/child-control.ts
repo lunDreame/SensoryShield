@@ -50,7 +50,7 @@ export async function applyChildComfort(action: ComfortAction, api: ChildControl
       }
     }
     if (action === "LOUD" || action === "QUIET") {
-      let speed = action === "LOUD"
+      let speed = config.fanMaxPercent < FAN_MIN_PERCENT ? 0 : action === "LOUD"
         ? Math.max(0, Math.min(config.fanMaxPercent, currentFan - FAN_STEP))
         : currentFan >= config.fanMaxPercent ? currentFan : Math.min(config.fanMaxPercent, Math.max(FAN_MIN_PERCENT, currentFan + FAN_STEP));
       // Below the motor's minimum duty it does not become quieter: stop it instead.
@@ -65,7 +65,7 @@ export async function applyChildComfort(action: ComfortAction, api: ChildControl
       if (action === "BRIGHT") return currentLight === 0 ? "조명은 이미 꺼져 있어요. 다른 빛이 불편하면 보호자에게 알려주세요." : "설정한 가장 낮은 밝기예요. 더 불편하면 보호자에게 알려주세요.";
       if (action === "DARK") return "설정한 가장 높은 밝기예요. 더 어두우면 보호자에게 알려주세요.";
       if (action === "LOUD") return "조명과 팬을 더 낮출 수 없어요. 다른 소리가 불편하면 보호자에게 알려주세요.";
-      return config.fanMaxPercent === 0 ? "보호자가 팬을 꺼두도록 설정했어요." : "설정한 가장 센 바람이에요. 바꾸고 싶으면 보호자에게 알려주세요.";
+      return config.fanMaxPercent < FAN_MIN_PERCENT ? "보호자가 팬을 꺼두도록 설정했어요." : "설정한 가장 센 바람이에요. 바꾸고 싶으면 보호자에게 알려주세요.";
     }
     stage = "mode";
     // The existing API default supplies the return time; children do not choose a duration.

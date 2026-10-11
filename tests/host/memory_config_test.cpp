@@ -59,6 +59,13 @@ int main() {
     assert(memory.Config().profileConfigured);
     assert(!memory.Config().occupancyAutomationEnabled);
     assert(memory.Config().lightWeight == 0.8f);
+    config.fanMaxPercent = 10; config.preferredFanPercent = 10;
+    assert(memory.SaveConfig(config) == 0);
+    assert(memory.Config().fanMaxPercent == 10 && memory.Config().preferredFanPercent == 0);
+    config.fanMaxPercent = 100; config.preferredFanPercent = 1;
+    assert(memory.SaveConfig(config) == 0);
+    assert(memory.Config().preferredFanPercent == 18);
+    config.preferredFanPercent = 40;
     config.minCCTMireds = 300;
     config.maxCCTMireds = 400;
     assert(memory.SaveConfig(config) == 0);

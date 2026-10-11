@@ -53,6 +53,7 @@ class System final {
         return mode;
     }
     uint32_t OverrideRemainingSeconds() const;
+    FanDiagnostics GetFanDiagnostics() const;
     bool Ready() const {
         k_mutex_lock(&mLock, K_FOREVER);
         const bool ready = mReady;

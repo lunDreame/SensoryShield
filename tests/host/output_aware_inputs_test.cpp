@@ -30,11 +30,20 @@ int main() {
     s.observedAtMs = s.sound.timestampMs = 1750;
     auto fan = observer.Observe(s);
     assert(fan.learnLight && !fan.learnSound && fan.sound.energy == .002f);
+    s.observedOutputs.fanBoosting = true; s.observedAtMs = s.sound.timestampMs = 2000;
+    assert(!observer.Observe(s).controlInputsSettled);
+    s.observedOutputs.fanBoosting = false; s.observedOutputs.fanOutputValid = false;
+    s.observedAtMs = s.sound.timestampMs = 2250;
+    assert(!observer.Observe(s).learnSound);
+    s.observedOutputs.fanOutputValid = true; s.observedAtMs = s.sound.timestampMs = 2500;
+    assert(!observer.Observe(s).learnSound); // Wait 500 ms after the output becomes valid.
+    s.observedAtMs = s.sound.timestampMs = 2750;
+    assert(observer.Observe(s).learnSound);
     auto duplicate = observer.Observe(s);
     assert(!duplicate.controlInputsSettled);
-    s.observedAtMs = s.sound.timestampMs = 2000; s.micValid=false;
+    s.observedAtMs = s.sound.timestampMs = 3000; s.micValid=false;
     assert(!observer.Observe(s).micValid);
-    s.micValid=true; s.learnLight=false; s.observedAtMs=s.sound.timestampMs=3000;
+    s.micValid=true; s.learnLight=false; s.observedAtMs=s.sound.timestampMs=4000;
     assert(!observer.Observe(s).learnLight); // Caller admission veto is preserved.
     // Optional calibration remains a separate diagnostic utility, not the default control input.
     LightSensorCalibration calibration{true,50,40,30}; float ambient;

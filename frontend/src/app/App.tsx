@@ -69,7 +69,7 @@ export function App() {
         <>
           {route === "dashboard" ? <DashboardPage status={status} updatedAt={updatedAt} connectionError={error !== null} /> : null}
           {route === "settings" ? <SettingsPage onRestartOnboarding={setProfile} /> : null}
-          {route === "diagnostics" ? <DiagnosticsPage status={status} /> : null}
+          {route === "diagnostics" ? <DiagnosticsPage status={status} connectionError={error !== null} /> : null}
         </>
       )}
     </div>

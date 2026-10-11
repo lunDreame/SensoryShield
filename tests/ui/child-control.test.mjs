@@ -86,6 +86,11 @@ await request('/api/fan', { power: false, speed: 0 });
 commands.length = 0;
 assert.match(await applyChildComfort('QUIET', api), /팬을 꺼두도록/);
 assert.equal(commands.length, 0);
+await request('/api/profile', { fanMaxPercent: 10, preferredFanPercent: 10 });
+await request('/api/fan', { power: false, speed: 0 });
+commands.length = 0;
+assert.match(await applyChildComfort('QUIET', api), /팬을 꺼두도록/);
+assert.equal(commands.length, 0); // A cap below the motor minimum never becomes an 18% request.
 // Previously lower manual output must never increase on a too-bright request.
 await request('/api/light', { power: true, brightness: 10, cct: 333 });
 await applyChildComfort('BRIGHT', api);

@@ -1,4 +1,4 @@
-import type { AppConfig, EnvironmentMeasurement, ControlMode, StatusResponse, SystemHealth } from "../types/domain";
+import type { AppConfig, DiagnosticsResponse, EnvironmentMeasurement, ControlMode, StatusResponse, SystemHealth } from "../types/domain";
 
 export const initialStatus: StatusResponse = {
   sensor: {
@@ -89,6 +89,10 @@ async function request<T>(path: string, init?: RequestInit, timeoutMs = 2500): P
 
 export async function getStatus(): Promise<StatusResponse> {
   return normalizeStatus(await request<RawStatusResponse>("/api/status", undefined, 5000));
+}
+
+export function getDiagnostics(): Promise<DiagnosticsResponse> {
+  return request("/api/diagnostics", undefined, 5000);
 }
 
 export function setMode(mode: ControlMode, durationMinutes = 15): Promise<{ ok: boolean }> {

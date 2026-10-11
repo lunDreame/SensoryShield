@@ -52,10 +52,11 @@ await request('/__mock/scenario',{scenario:'command-error'});
 assert.equal((await request('/api/fan',{power:true,speed:40})).status,503);
 await request('/__mock/scenario',{scenario:'offline'});
 assert.equal((await request('/api/status')).status,503);
+assert.equal((await request('/api/diagnostics')).status,503);
 await request('/__mock/scenario',{scenario:'normal'});
 assert.equal((await request('/api/status')).status,200);
 await request('/api/profile',{fanMaxPercent:10});
-assert.equal((await request('/api/status')).body.outputs.fanPercent,10);
+assert.equal((await request('/api/status')).body.outputs.fanPercent,0); // A cap below 18% disables the fan.
 await request('/api/profile',{fanMaxPercent:100});
 assert.equal((await request('/api/profile',{preferredBrightness:101})).status,400);
 // Setup no longer measures or previews outputs. It preserves normal-output settings.
@@ -91,6 +92,19 @@ assert.equal(absent.outputs.lightOn,true); assert.equal(absent.outputs.fanOn,tru
 await request('/api/profile',{lightWeight:.8});
 assert.equal((await request('/api/profile')).body.occupancyAutomationEnabled,false); // omitted retains stored setting
 assert.equal((await request('/api/diagnostics')).body.profile.occupancyAutomationEnabled,false);
+for (const [scenario, expected] of [
+  ['normal', {boosting:false,outputValid:true,stabilizationWaiting:false,controlInputsSettled:true}],
+  ['fan-boost', {boosting:true,outputValid:true,stabilizationWaiting:true,controlInputsSettled:false}],
+  ['fan-pwm-error', {boosting:false,outputValid:false,stabilizationWaiting:true,controlInputsSettled:false,lastError:-5}],
+  ['fan-settling', {boosting:false,outputValid:true,stabilizationWaiting:true,controlInputsSettled:false}]
+]) {
+  await request('/__mock/scenario',{scenario});
+  const fan=(await request('/api/diagnostics')).body.fan;
+  for (const [key,value] of Object.entries(expected)) assert.equal(fan[key],value);
+}
+await request('/__mock/scenario',{scenario:'legacy-diagnostics'});
+assert.equal((await request('/api/diagnostics')).body.fan,undefined); // Older response is information-absent, not normal.
+await request('/__mock/scenario',{scenario:'vacant'});
 for(const value of [0,1,'false',null]) assert.equal((await request('/api/profile',{occupancyAutomationEnabled:value})).status,400);
 await request('/api/profile',{occupancyAutomationEnabled:true});
 assert.equal((await request('/api/status')).body.outputs.lightOn,false);

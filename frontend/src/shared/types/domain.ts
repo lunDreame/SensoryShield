@@ -46,6 +46,27 @@ export interface StatusResponse {
   system: SystemHealth;
 }
 
+export interface FanDiagnostics {
+  targetPercent: number;
+  appliedDutyPercent: number;
+  boosting: boolean;
+  outputValid: boolean;
+  lastError: number;
+  changedAgoMs: number;
+  stabilizationWaiting: boolean;
+  controlInputsSettled: boolean;
+}
+
+export interface DiagnosticsResponse {
+  firmware: string;
+  uptimeSeconds: number;
+  storage: SystemHealth["storage"];
+  sensors: { illuminance: boolean; mic: boolean; pir: boolean };
+  matter: SystemHealth["matter"];
+  profile: AppConfig;
+  fan?: FanDiagnostics;
+}
+
 export interface AppConfig {
   lightWeight: number;
   soundWeight: number;

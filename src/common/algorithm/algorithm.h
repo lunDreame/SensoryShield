@@ -23,6 +23,7 @@ class Algorithm final {
     float LightBaselineMad() const { return mStimulusScorer.LightBaselineMad(); }
     float SoundBaselineMedian() const { return mStimulusScorer.SoundBaselineMedian(); }
     bool LightRebasePending() const { return mLightRebasePending; }
+    bool ControlInputsSettled() const { return mObserved.controlInputsSettled; }
 
     Algorithm(const Algorithm&) = delete;
     Algorithm& operator=(const Algorithm&) = delete;

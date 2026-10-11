@@ -83,6 +83,9 @@ struct ObservedOutputs {
     uint8_t fanPercent = 0;
     bool lightSettled = true, fanSettled = true;
     bool lightObservationConsistent = true;
+    bool fanOutputValid = true;
+    bool fanBoosting = false;
+    uint32_t fanOutputChangedAtMs = 0;
 };
 
 struct SensorSnapshot {
@@ -118,6 +121,17 @@ struct ControlTarget {
     }
 };
 
+struct FanDiagnostics {
+    uint8_t targetPercent = 0;
+    uint8_t appliedDutyPercent = 0;
+    bool boosting = false;
+    bool outputValid = false;
+    int lastError = 0;
+    uint32_t changedAgoMs = 0;
+    bool stabilizationWaiting = true;
+    bool controlInputsSettled = false;
+};
+
 enum class ControlMode : uint8_t {
     Auto = 0,
     Manual,
@@ -131,4 +145,17 @@ template <typename T> inline bool HasChanged(const T& previous, const T& current
 
 template <typename T> inline T ClampValue(T value, T minimum, T maximum) {
     return value < minimum ? minimum : (value > maximum ? maximum : value);
+}
+
+// Cap before applying the motor's minimum running duty. A guardian cap below
+// that minimum disables the fan; it is never silently raised to 18%.
+inline uint8_t NormalizeFanPercent(uint8_t requestedPercent, uint8_t maximumPercent) {
+    const uint8_t cap = ClampValue<uint8_t>(maximumPercent, 0U, 100U);
+    if (requestedPercent == 0U || cap < FAN_MIN_DUTY_PERCENT) return 0U;
+    const uint8_t capped = ClampValue<uint8_t>(requestedPercent, 0U, cap);
+    return capped < FAN_MIN_DUTY_PERCENT ? FAN_MIN_DUTY_PERCENT : capped;
+}
+
+inline uint32_t ElapsedUptimeMs(uint32_t now, uint32_t changedAt) {
+    return now - changedAt;
 }

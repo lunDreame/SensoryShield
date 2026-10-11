@@ -39,6 +39,12 @@ npm run build
 
 REST API는 `/api/status`, `/api/light`, `/api/fan`, `/api/mode`, `/api/profile`, `/api/diagnostics`, `/api/factory-reset`을 제공합니다. `/api/light`는 `power`, `brightness`, `cct`, `rgbMode`, `red`, `green`, `blue`를 받을 수 있습니다. Matter ColorControl은 Level, ColorTemperature, Hue/Saturation 명령을 지원합니다. factory reset 엔드포인트는 확인 요청이 있는 경우에만 동작합니다.
 
+`/api/diagnostics`의 `fan`은 정규화된 목표 PWM, 마지막 성공 duty, 부스트/유효/오류 상태,
+마지막 성공 변경 후 경과 시간, 팬 안정화 대기와 전체 제어 입력 안정 상태를 구분해 보고합니다.
+PWM은 전기적 구동 명령이며 RPM·회전·풍량 측정값이 아닙니다. 오류 상태의 마지막 성공 duty도 현재
+물리 출력을 보장하지 않습니다. 실제 장비에서는 **OFF → 기동 부스트 → 목표 PWM → 안정화 대기 → 정상 판정**
+순서와, PWM 실패 시 출력 무효 및 학습 보류를 로그와 진단 화면에서 확인합니다.
+
 ## 현재 하드웨어 매핑
 
 - BH1750 I2C: SDA `P1.12`, SCL `P1.13`
@@ -46,6 +52,11 @@ REST API는 `/api/status`, `/api/light`, `/api/fan`, `/api/mode`, `/api/profile`
 - HC-SR501 PIR: `P1.10`
 - WS2812B 12 LED ring: `DI` -> `P3.00` 출력 가능 GPIO 패드, `5V` -> 5 V 전원, `GND` -> 공통 GND, `DO` -> 다음 LED 체인 연결용 또는 미사용
 - Fan PWM: `P3.02`
+
+팬의 0%가 아닌 요청은 보호자 상한을 먼저 적용합니다. 상한이 1~17%이면 팬을 구동하지 않고,
+상한이 18% 이상이면 1~17% 요청을 최소 구동 duty 18%로 적용합니다. 정지 상태에서 시작할 때의
+100%/350 ms PWM은 팬 기동을 위한 일시적 부스트라서 보호자 정상 출력 상한보다 높을 수 있습니다.
+이는 PWM 명령이 성공했다는 뜻이며 실제 회전, RPM, 풍량 또는 공기질 개선을 확인했다는 뜻은 아닙니다.
 
 WS2812B `DI`는 보드의 출력 가능한 GPIO 패드에 연결합니다. 현재 펌웨어는 `P3.00`을 WS2812B 데이터 파형 출력으로 사용합니다.
 

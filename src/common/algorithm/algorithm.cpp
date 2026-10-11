@@ -25,6 +25,8 @@ int Algorithm::Initialize(const AppConfig& config) {
     mStimulusScorer.Reset();
     mSoundFan.Reset();
     mOutputAware.Reset();
+    mObserved = {};
+    mObserved.controlInputsSettled = false;
     mLightPresence.Reset();
     mPreviousTarget = {false, config.minBrightness, config.maxCCTMireds, false, 255, 255, 255, false, 0, 0.0f};
     LOG_INF("Algorithm ready");
@@ -49,7 +51,7 @@ StimulusScore Algorithm::EvaluateEnvironment(const SensorSnapshot& snapshot, boo
         const auto& o = snapshot.observedOutputs;
         const uint8_t normalBrightness = ClampValue(mConfig.preferredBrightness, mConfig.minBrightness, mConfig.maxBrightness);
         const uint16_t normalCct = ClampValue(mConfig.normalCCTMireds, mConfig.minCCTMireds, mConfig.maxCCTMireds);
-        const uint8_t normalFan = ClampValue<uint8_t>(mConfig.preferredFanPercent, 0, mConfig.fanMaxPercent);
+        const uint8_t normalFan = NormalizeFanPercent(mConfig.preferredFanPercent, mConfig.fanMaxPercent);
         ordinaryOutput = ordinaryOutput && o.lightOn == (normalBrightness > 0) && o.brightness == normalBrightness &&
             !o.rgb && o.cct == normalCct && o.fanOn == (normalFan > 0) && o.fanPercent == normalFan;
     }

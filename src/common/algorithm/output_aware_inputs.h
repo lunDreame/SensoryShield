@@ -54,7 +54,8 @@ class OutputAwareInputs {
         const auto& o = input.observedOutputs;
         const auto light = mLight.Observe(input.lux, LightOutputKey(o), input.observedAtMs,
             o.lightObservationConsistent && o.lightSettled, input.illuminanceValid && input.lux >= 0);
-        const auto sound = mSound.Observe(input.sound.energy, FanOutputKey(o), input.sound.timestampMs, o.fanSettled,
+        const auto sound = mSound.Observe(input.sound.energy, FanOutputKey(o), input.sound.timestampMs,
+            o.fanOutputValid && !o.fanBoosting && o.fanSettled,
             input.micValid && input.sound.valid && isfinite(input.sound.energy) &&
             input.sound.energy >= 0 && input.sound.energy <= 1 && isfinite(input.sound.peak) &&
             isfinite(input.sound.delta) && input.sound.peak >= input.sound.energy && input.sound.peak <= 1 &&

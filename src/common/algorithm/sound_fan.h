@@ -14,9 +14,9 @@ class SoundFanController final {
     bool IsNormal() const { return mState == State::Normal; }
     uint8_t Evaluate(const SensorSnapshot& snapshot, const AppConfig& config,
                      const StimulusScore& stimulus, uint32_t now) {
-        const uint8_t cap = config.fanMaxPercent > 100 ? 100 : config.fanMaxPercent;
-        const uint8_t normal = ClampValue<uint8_t>(config.preferredFanPercent, 0, cap);
-        const uint8_t quiet = normal < config.reliefFanPercent ? normal : config.reliefFanPercent;
+        const uint8_t normal = NormalizeFanPercent(config.preferredFanPercent, config.fanMaxPercent);
+        const uint8_t relief = NormalizeFanPercent(config.reliefFanPercent, config.fanMaxPercent);
+        const uint8_t quiet = normal < relief ? normal : relief;
         if ((config.occupancyAutomationEnabled && (!snapshot.pirValid || !snapshot.occupied)) || normal == 0U) { Reset(); return 0; }
         if (mPercent > normal) mPercent = normal;
         const auto& sound = snapshot.sound;

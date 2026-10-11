@@ -367,6 +367,23 @@ uint32_t System::OverrideRemainingSeconds() const {
     return remainingMs > 0 ? static_cast<uint32_t>((remainingMs + 999) / 1000) : 0;
 }
 
+FanDiagnostics System::GetFanDiagnostics() const {
+    k_mutex_lock(&mLock, K_FOREVER);
+    const ControlTarget target = mTarget;
+    const auto output = GetFan()->GetOutputState();
+    const bool controlInputsSettled = GetAlgorithm()->ControlInputsSettled();
+    const uint8_t fanMaxPercent = GetMemory()->Config().fanMaxPercent;
+    const uint32_t now = k_uptime_get_32();
+    k_mutex_unlock(&mLock);
+
+    const uint8_t targetPercent = NormalizeFanPercent(target.fanOn ? target.fanPercent : 0U, fanMaxPercent);
+    const uint32_t changedAgoMs = ElapsedUptimeMs(now, output.changedAtMs);
+    const bool waiting = !output.valid || output.boosting || output.appliedDutyPercent != targetPercent ||
+                         changedAgoMs < OutputAwareSignal::SettleMs;
+    return {targetPercent, output.appliedDutyPercent, output.boosting, output.valid, output.lastError,
+            changedAgoMs, waiting, controlInputsSettled};
+}
+
 int System::SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMireds) {
     return SetManualLight(on, brightnessPercent, cctMireds, false, 255, 255, 255);
 }
@@ -536,6 +553,7 @@ void System::SensorWork() {
     k_mutex_lock(&mLock, K_FOREVER);
     ControlTarget observed = mAppliedTarget;
     SyncAppliedTargetFromDevices(observed); // Includes changes made through Matter.
+    const Fan::OutputState observedFanOutput = GetFan()->GetOutputState();
     const ControlTarget requested = mTarget;
     k_mutex_unlock(&mLock);
     float lux = 0.0f;
@@ -549,18 +567,34 @@ void System::SensorWork() {
     k_mutex_lock(&mLock, K_FOREVER);
     ControlTarget after = mAppliedTarget;
     SyncAppliedTargetFromDevices(after);
+    const Fan::OutputState afterFanOutput = GetFan()->GetOutputState();
     snapshot.observedAtMs = k_uptime_get_32();
     const bool lightConsistent = observed.lightOn == after.lightOn &&
         observed.brightnessPercent == after.brightnessPercent && observed.cctMireds == after.cctMireds &&
         observed.rgbMode == after.rgbMode && observed.red == after.red &&
         observed.green == after.green && observed.blue == after.blue;
-    snapshot.observedOutputs = {true, observed.lightOn, observed.brightnessPercent, observed.cctMireds,
-        observed.rgbMode, observed.red, observed.green, observed.blue, observed.fanOn, observed.fanPercent,
-        lightConsistent &&
+    auto& outputs = snapshot.observedOutputs;
+    outputs.valid = true;
+    outputs.lightOn = observed.lightOn;
+    outputs.brightness = observed.brightnessPercent;
+    outputs.cct = observed.cctMireds;
+    outputs.rgb = observed.rgbMode;
+    outputs.red = observed.red;
+    outputs.green = observed.green;
+    outputs.blue = observed.blue;
+    outputs.fanOn = observedFanOutput.appliedDutyPercent > 0U;
+    outputs.fanPercent = observedFanOutput.appliedDutyPercent;
+    outputs.lightSettled = lightConsistent &&
         after.brightnessPercent == (requested.lightOn ? requested.brightnessPercent : 0U) &&
-        after.cctMireds == requested.cctMireds,
-        observed.fanOn == after.fanOn && observed.fanPercent == after.fanPercent &&
-        after.fanPercent == (requested.fanOn ? requested.fanPercent : 0U), lightConsistent};
+        after.cctMireds == requested.cctMireds;
+    const uint8_t requestedFan = requested.fanOn ? requested.fanPercent : 0U;
+    outputs.fanOutputValid = observedFanOutput.valid && afterFanOutput.valid;
+    outputs.fanBoosting = observedFanOutput.boosting || afterFanOutput.boosting;
+    outputs.fanOutputChangedAtMs = afterFanOutput.changedAtMs;
+    outputs.fanSettled = outputs.fanOutputValid && !outputs.fanBoosting &&
+        observedFanOutput.appliedDutyPercent == afterFanOutput.appliedDutyPercent &&
+        afterFanOutput.appliedDutyPercent == requestedFan;
+    outputs.lightObservationConsistent = lightConsistent;
     mSnapshot = snapshot;
     const bool settled = mMode == ControlMode::Manual && !(mAppliedTarget != mManualTarget) &&
         mMeasurement.Matches(mAppliedTarget.brightnessPercent, mAppliedTarget.cctMireds);
