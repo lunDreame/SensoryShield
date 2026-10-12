@@ -6,7 +6,7 @@ test_dir=$(mktemp -d "${TMPDIR:-/tmp}/sensoryshield-threshold-review.XXXXXX")
 trap 'rm -rf "$test_dir"' EXIT
 "${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -Itests/host/stubs -Isrc \
   tests/host/threshold_review.cpp src/common/algorithm/stimulus_score.cpp \
-  src/common/algorithm/baseline.cpp src/common/algorithm/light_presence.cpp -o "$test_dir/review"
+  src/common/algorithm/baseline.cpp src/common/algorithm/sensory_relief.cpp -o "$test_dir/review"
 "$test_dir/review" > "$test_dir/result.json"
 python3 - "$test_dir/result.json" "$output_file" <<'PY'
 import hashlib
@@ -23,8 +23,8 @@ sources = [
     "src/common/algorithm/stimulus_policy.h",
     "src/common/algorithm/algorithm.cpp", "src/common/algorithm/output_aware_inputs.h",
     "src/common/algorithm/recovery_guard.h",
-    "src/common/algorithm/light_presence.h", "src/common/algorithm/light_presence.cpp",
-    "src/common/algorithm/sound_fan.h", "tests/host/threshold_review.cpp",
+    "src/common/algorithm/sensory_relief.h", "src/common/algorithm/sensory_relief.cpp",
+    "tests/host/fan_probe.h", "tests/host/threshold_review.cpp",
     "frontend/src/pages/onboarding/ProfileOnboarding.tsx",
 ]
 result["source_sha256"] = {path: hashlib.sha256(Path(path).read_bytes()).hexdigest() for path in sources}

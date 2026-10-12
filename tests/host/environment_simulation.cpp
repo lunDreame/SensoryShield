@@ -1,6 +1,6 @@
 #include "common/algorithm/algorithm.h"
 uint32_t testUptimeMs = 0;
-#include "common/algorithm/light_presence.h"
+#include "common/algorithm/sensory_relief.h"
 #include "common/algorithm/output_aware_inputs.h"
 #include <algorithm>
 #include <cassert>
@@ -37,9 +37,11 @@ int main(int argc, char** argv) {
     auto& algorithm = Algorithm::Instance(); AppConfig config;
     config.preferredBrightness = static_cast<uint8_t>(preferred);
     config.minBrightness = static_cast<uint8_t>(minimum);
+    config.maxBrightness = 100; // This sweep deliberately includes the legacy 100% operating context.
     config.profileConfigured = true;
     uint8_t applied = config.preferredBrightness;
     uint8_t targetBrightness = applied;
+    uint8_t appliedFan = config.preferredFanPercent, targetFan = appliedFan;
     uint16_t appliedCct = config.minCCTMireds, targetCct = appliedCct;
     float sensorBrightness = applied;
     InitialEnvironment initial;
@@ -51,7 +53,7 @@ int main(int argc, char** argv) {
     algorithm.Initialize(config);
     algorithm.SeedEnvironment(initial);
     SensorSnapshot snapshot = {initial.lux[0], {.01f, .01f, 0, 0, true}, true, 0, true, true, true};
-    puts("time_ms,sensor_time_ms,mode,ambient_lux,lux,baseline_before_lux,baseline_lux,mad_lux,light_score,score,target_brightness,applied_brightness,sensor_brightness,cct_mireds,coupling,preferred_brightness,minimum_brightness,learning");
+    puts("time_ms,sensor_time_ms,mode,ambient_lux,lux,baseline_before_lux,baseline_lux,mad_lux,light_score,score,target_brightness,applied_brightness,sensor_brightness,cct_mireds,coupling,preferred_brightness,minimum_brightness,learning,target_fan,applied_fan");
     for (uint32_t now = 0; now < 300000; now += ACTUATOR_RAMP_MS) {
         const float seconds = now / 1000.0f;
         float ambient = 100;
@@ -66,8 +68,8 @@ int main(int argc, char** argv) {
         if (now % SENSOR_PERIOD_MS == static_cast<uint32_t>(sensorPhase)) {
             snapshot.lux = ambient + coupling * applied;
             snapshot.sound.timestampMs = snapshot.observedAtMs = now;
-            snapshot.observedOutputs = {true, applied > 0, applied, appliedCct, false, 255, 255, 255, true, config.preferredFanPercent,
-                applied == targetBrightness && appliedCct == targetCct, true};
+            snapshot.observedOutputs = {true, applied > 0, applied, appliedCct, false, 255, 255, 255, appliedFan > 0, appliedFan,
+                applied == targetBrightness && appliedCct == targetCct, appliedFan == targetFan};
             sensorBrightness = applied;
         }
         if (manualReturn && now == 40000) algorithm.ResetAutomaticLight();
@@ -81,14 +83,15 @@ int main(int argc, char** argv) {
             assert(std::isfinite(score.combined) && score.combined >= 0 && score.combined <= STIMULUS_MAX_SCORE);
             assert(target.cctMireds >= config.minCCTMireds && target.cctMireds <= config.maxCCTMireds);
             assert(target.brightnessPercent >= config.minBrightness && target.brightnessPercent <= config.preferredBrightness);
-            if (!manual) { targetBrightness = target.brightnessPercent; targetCct = target.cctMireds; }
-            printf("%u,%u,%s,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%u,%u,%.0f,%u,%.4f,%u,%u,%s\n",
+            if (!manual) { targetBrightness = target.brightnessPercent; targetCct = target.cctMireds; targetFan = target.fanPercent; }
+            printf("%u,%u,%s,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%.4f,%u,%u,%.0f,%u,%.4f,%u,%u,%s,%u,%u\n",
                    now, snapshot.sound.timestampMs, manual ? "manual" : "auto", ambient, snapshot.lux, before,
                    algorithm.LightBaselineMedian(), algorithm.LightBaselineMad(), score.light, score.combined,
                    targetBrightness, applied, sensorBrightness, target.cctMireds, coupling,
-                   config.preferredBrightness, config.minBrightness, learning);
+                   config.preferredBrightness, config.minBrightness, learning, targetFan, appliedFan);
         }
         // The existing System::ActuatorRampWork moves at most 2 percentage points per 25 ms.
+        appliedFan = static_cast<uint8_t>(int(appliedFan) + std::clamp(int(targetFan) - int(appliedFan), -2, 2));
         const int difference = int(targetBrightness) - applied;
         applied = static_cast<uint8_t>(int(applied) + std::clamp(difference, -2, 2));
         appliedCct = static_cast<uint16_t>(int(appliedCct) + std::clamp(int(targetCct) - int(appliedCct), -8, 8));

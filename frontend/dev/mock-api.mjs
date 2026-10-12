@@ -7,9 +7,9 @@ export function mockApi() {
   let manualLight = { lightOn: true, brightnessPercent: 60, cctMireds: 370, rgbMode: false, red: 255, green: 255, blue: 255 };
   let overrideUntil = 0;
   const started = Date.now();
-  let profile = { lightWeight: 0.55, soundWeight: 0.45, minBrightness: 1, maxBrightness: 100,
-    minCCTMireds: 250, maxCCTMireds: 454, preferredCCTMireds: 333, preferredBrightness: 100, preferredFanPercent: 60, fanMaxPercent: 100, occupancyTimeoutMs: 30000, occupancyAutomationEnabled: true,
-    normalCCTMireds:250, reliefFanPercent:20, reliefHoldMs:1500, recoverConfirmMs:2500, profileConfigured: false };
+  let profile = { lightWeight: 0.55, soundWeight: 0.45, minBrightness: 30, maxBrightness: 80,
+    minCCTMireds: 250, maxCCTMireds: 454, preferredCCTMireds: 417, preferredBrightness: 60, preferredFanPercent: 60, fanMaxPercent: 100, occupancyTimeoutMs: 30000, occupancyAutomationEnabled: false,
+    normalCCTMireds:250, reliefFanPercent:20, reliefHoldMs:3000, recoverConfirmMs:2500, profileConfigured: false };
   let initialEnvironment = null;
   let measurement = {state:"idle",samples:0,requiredSamples:31,luxMedian:0,luxMad:0,soundMedian:0,soundMad:0};
   let measurementStarted = 0;
@@ -101,7 +101,7 @@ export function mockApi() {
             }
             if (!Number.isInteger(next.normalCCTMireds) || next.normalCCTMireds < next.minCCTMireds || next.normalCCTMireds > next.maxCCTMireds ||
                 !Number.isInteger(next.reliefFanPercent) || next.reliefFanPercent < 0 || next.reliefFanPercent > 100 || (next.reliefFanPercent > 0 && next.reliefFanPercent < 18) ||
-                !Number.isInteger(next.reliefHoldMs) || next.reliefHoldMs < 0 || next.reliefHoldMs > 600000 ||
+                !Number.isInteger(next.reliefHoldMs) || next.reliefHoldMs < 0 || next.reliefHoldMs > 3600000 ||
                 !Number.isInteger(next.recoverConfirmMs) || next.recoverConfirmMs < 250 || next.recoverConfirmMs > 60000) {send(400,{ok:false}); return;}
             next.preferredFanPercent = normalizeFan(next.preferredFanPercent, next.fanMaxPercent);
             if (body.useMeasuredEnvironment) { send(400,{ok:false}); return; }

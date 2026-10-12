@@ -79,7 +79,7 @@ target_sources(app PRIVATE
     src/system/web_assets.cpp
     src/common/algorithm/algorithm.cpp
     src/common/algorithm/baseline.cpp
-    src/common/algorithm/light_presence.cpp
+    src/common/algorithm/sensory_relief.cpp
     src/common/algorithm/stimulus_score.cpp
     src/common/device/device.cpp
     src/common/device/Light.cpp

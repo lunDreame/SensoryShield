@@ -28,6 +28,13 @@ bool StimulusScorer::RebaseLight(float lux) {
     return true;
 }
 
+bool StimulusScorer::RebaseSound(float rms) {
+    if (!isfinite(rms) || rms < 0.0f || rms > 1.0f) return false;
+    mSoundBaseline.Reset();
+    mSoundBaseline.Add(rms);
+    return true;
+}
+
 StimulusScore StimulusScorer::Evaluate(const SensorSnapshot& snapshot, const AppConfig& config) {
     const bool wasReady = mLuxBaseline.Ready() && mSoundBaseline.Ready();
     const bool soundWasReady = mSoundBaseline.Ready();

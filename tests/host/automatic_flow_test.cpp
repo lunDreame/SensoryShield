@@ -1,3 +1,4 @@
+#include "fan_probe.h"
 #include "common/algorithm/algorithm.h"
 #include <cassert>
 #include <cmath>
@@ -5,7 +6,7 @@
 uint32_t testUptimeMs = 0;
 SensorSnapshot sample{100,{.01f,.01f,0,0,true},true,1,true,true,true};
 int main() {
-    auto& a = Algorithm::Instance(); AppConfig config;
+    auto& a = Algorithm::Instance(); AppConfig config; config.minBrightness=1; config.maxBrightness=100; config.preferredBrightness=100; config.reliefHoldMs=1500; config.occupancyAutomationEnabled=true;
     auto tick = [&](float lux, bool automatic = true) {
         testUptimeMs += 250; sample.lux=lux; sample.sound.timestampMs=testUptimeMs;
         const auto score=a.EvaluateEnvironment(sample,automatic);
@@ -39,9 +40,9 @@ int main() {
     assert(early.fanPercent<config.preferredFanPercent);
     sample.sound.energy=sample.sound.peak=.01f;
 
-    LightPresenceController light; SensorSnapshot s=sample; s.lux=100; s.sound.energy=.01f;
+    SensoryReliefController light; SensorSnapshot s=sample; s.lux=100; s.sound.energy=.01f;
     uint32_t now=0;
-    auto step=[&](float score) {now+=250; s.sound.timestampMs=now; return light.Evaluate(s,config,score,now);};
+    auto step=[&](float score) {now+=250; s.sound.timestampMs=now; auto lightOnly=config; lightOnly.preferredFanPercent=0; return light.Evaluate(s,lightOnly,score,now);};
     step(0);
     for(int i=0;i<5;++i) step(4);
     for(int i=0;i<30;++i) step(0);
@@ -63,7 +64,7 @@ int main() {
     for(int i=0;i<200;++i) step(0);
     assert(light.IsNormal());
 
-    SoundFanController fan; now=0; s.lux=100;
+    FanProbe fan; now=0; s.lux=100;
     auto fanStep=[&](float score) {now+=250; s.sound.timestampMs=now; return fan.Evaluate(s,config,{0,score,score,true,true},now);};
     for(int i=0;i<5;++i) fanStep(0);
     for(int i=0;i<40;++i) fanStep(4);

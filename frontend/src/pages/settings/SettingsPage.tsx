@@ -7,17 +7,17 @@ import type { AppConfig } from "../../shared/types/domain";
 const initialConfig: AppConfig = {
   lightWeight: 0.55,
   soundWeight: 0.45,
-  minBrightness: 1,
-  maxBrightness: 100,
+  minBrightness: 30,
+  maxBrightness: 80,
   minCCTMireds: 250,
   maxCCTMireds: 454,
-  preferredCCTMireds: 333,
-  preferredBrightness: 100,
+  preferredCCTMireds: 417,
+  preferredBrightness: 60,
   preferredFanPercent: 60,
-  normalCCTMireds: 250, reliefFanPercent: 20, reliefHoldMs: 1500, recoverConfirmMs: 2500,
+  normalCCTMireds: 250, reliefFanPercent: 20, reliefHoldMs: 3000, recoverConfirmMs: 2500,
   fanMaxPercent: 100,
   occupancyTimeoutMs: 30000,
-  occupancyAutomationEnabled: true,
+  occupancyAutomationEnabled: false,
   profileConfigured: true
 };
 
@@ -152,8 +152,8 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
     if (!Number.isInteger(config.reliefFanPercent) || config.reliefFanPercent < 0 || config.reliefFanPercent > 100 || (config.reliefFanPercent > 0 && config.reliefFanPercent < 18)) {
       setError("완화 시 팬 세기는 0%(끄기) 또는 18~100%로 설정해 주세요."); return;
     }
-    if (!Number.isInteger(config.reliefHoldMs) || config.reliefHoldMs < 0 || config.reliefHoldMs > 600000) {
-      setError("완화 최소 유지 시간은 0초에서 10분 사이로 설정해 주세요."); return;
+    if (!Number.isInteger(config.reliefHoldMs) || config.reliefHoldMs < 0 || config.reliefHoldMs > 3600000) {
+      setError("완화 최소 유지 시간은 0초에서 60분 사이로 설정해 주세요."); return;
     }
     if (!Number.isInteger(config.recoverConfirmMs) || config.recoverConfirmMs < 250 || config.recoverConfirmMs > 60000) {
       setError("복귀 확인 시간은 0.25초에서 60초 사이로 설정해 주세요."); return;
@@ -188,14 +188,14 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
   const meanings: Partial<Record<EditableConfigKey, string>> = {
     minBrightness: "변화가 커질수록 이 하한 쪽으로 낮춰요. 모든 자극에서 바로 이 밝기로 내려가지는 않아요.",
     preferredCCTMireds: "조명을 낮출 때 사용할 빛이에요. 따뜻한 빛과 선명한 빛 중 아이에게 맞게 정해주세요.",
-    reliefFanPercent: "소음이 커지면 이 세기로 줄여요. 평소 세기보다 높아지지 않으며, 0%는 팬을 꺼요.",
-    reliefHoldMs: "완화를 시작한 뒤 최소한 유지할 시간이에요. 시간이 지나도 큰 변화가 남아 있으면 유지해요.",
+    reliefFanPercent: "빛과 소리의 합산 변화가 커지면 이 세기로 줄여요. 평소 세기보다 높아지지 않으며, 0%는 팬을 꺼요.",
+    reliefHoldMs: "완화를 시작한 뒤 최소한 유지할 시간이에요. 시간이 지나도 큰 변화가 남아 있으면 유지해요. 기본 3초는 시연용이에요. 실제 사용은 1,800초(30분)를 시작값으로 정하고 아이에 맞게 조절할 수 있어요.",
     recoverConfirmMs: "최소 유지 후, 변화가 낮은 상태로 이 시간 동안 이어지면 평소 출력으로 서서히 돌아가요.",
     preferredBrightness: "자동 모드에서 평소 사용할 밝기이며 완화 후 이 밝기로 돌아와요.",
     normalCCTMireds: "평소 사용할 빛이에요. 완화할 때 사용할 빛과 따로 정할 수 있어요.",
     preferredFanPercent: "평소 팬 세기이며 완화 후 돌아갈 값이에요. 0%는 자동 팬을 꺼둬요.",
     maxBrightness: "평소 밝기와 아이의 밝기 요청에도 적용하는 상한이에요.",
-    fanMaxPercent: "평소·완화·수동 요청에 적용하는 팬 출력의 상한이에요.",
+    fanMaxPercent: "평소·완화·수동 요청에 적용하는 팬 목표의 상한이에요. 켤 때는 회전을 시작하기 위해 0.35초 동안 100%로 구동한 뒤 목표 세기로 돌아와요.",
     minCCTMireds: "평소와 완화 색온도를 선택할 수 있는 가장 높은 K 값이에요.",
     maxCCTMireds: "평소와 완화 색온도를 선택할 수 있는 가장 낮은 K 값이에요.",
     occupancyTimeoutMs: "움직임이 사라진 뒤에도 자동 조절 중인 조명과 팬을 이 시간만큼 더 유지해요."
@@ -205,7 +205,7 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
     const time = key.endsWith("Ms");
     const sensitivity = key === "lightWeight" || key === "soundWeight";
     const minimum = cct ? 2203 : key === "recoverConfirmMs" ? .25 : key === "occupancyTimeoutMs" ? 1 : 0;
-    const maximum = cct ? 4000 : key === "recoverConfirmMs" ? 60 : time ? 600 : 100;
+    const maximum = cct ? 4000 : key === "recoverConfirmMs" ? 60 : key === "reliefHoldMs" ? 3600 : time ? 600 : 100;
     return <label className="input-line" key={key}>
       <span>{labels[key].title}</span>
       <div className="field-with-unit">
@@ -214,7 +214,7 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
         <em>{labels[key].unit}</em>
       </div>
       <small className="setting-meaning">{sensitivity ? <><b>{describeSensitivity(Number(displayValue(key)))}</b>
-        {key === "lightWeight" ? " · 높을수록 같은 밝기 증가에도 조명을 더 크게 조절해요." : " · 높을수록 같은 소음 증가가 조명과 팬 제어에 더 크게 반영돼요."}</> :
+        {key === "lightWeight" ? " · 높을수록 같은 밝기 증가가 조명과 팬의 공동 완화에 더 크게 반영돼요." : " · 높을수록 같은 소음 증가가 조명과 팬 제어에 더 크게 반영돼요."}</> :
         <>{cct ? <><b>{describeKelvin(Number(displayValue(key)))}</b> · </> : null}{meanings[key]}</>}</small>
     </label>;
   }
@@ -237,7 +237,7 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
     </Panel>
     <Panel title="자동 모드 기본 출력" subtitle="자동 모드를 시작할 때 사용할 밝기·빛·팬 세기예요. 완화 후에는 이 출력을 향해 서서히 돌아가요.">
       <div className="settings-grid">{(["preferredBrightness", "normalCCTMireds", "preferredFanPercent"] as EditableConfigKey[]).map(field)}</div>
-      <p className="profile-setting-note settings-section-note">기본 밝기·색온도를 변경하면 새 출력이 안정된 뒤 빛의 비교 기준을 다시 잡아요. 소리의 비교 기준은 유지해요. 홈에서 잠시 수동으로 조절한 값은 기본 출력으로 저장하지 않아요.</p>
+      <p className="profile-setting-note settings-section-note">평소 밝기·색온도를 저장해서 바꾸면 빛의 비교 기준을, 평소 팬 세기를 바꾸면 소리의 비교 기준을 새 출력이 안정된 뒤 다시 잡아요. 바꾸지 않은 항목의 기준은 유지해요. 홈에서 잠시 수동으로 조절한 값은 기본 출력으로 저장하지 않아요.</p>
     </Panel>
     <Panel title="재실 확인 설정" subtitle="자동 모드에서 움직임에 따라 조명과 팬을 끄고 다시 시작할지 정해요.">
       <label className="occupancy-toggle">

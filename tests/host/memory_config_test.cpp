@@ -134,7 +134,7 @@ int main() {
     assert(memory.Config().preferredFanPercent == 60 && memory.InitialBaseline().Valid());
     assert(memory.Config().preferredBrightness == 60);
     assert(memory.Config().normalCCTMireds == memory.Config().minCCTMireds);
-    assert(memory.Config().reliefFanPercent == 20 && memory.Config().reliefHoldMs == 1500 && memory.Config().recoverConfirmMs == 2500);
+    assert(memory.Config().reliefFanPercent == 20 && memory.Config().reliefHoldMs == AUTO_RELIEF_HOLD_MS && memory.Config().recoverConfirmMs == 2500);
     // v7 retains its chosen outputs and old observation offsets; old padding isn't a new preference.
     oldConfig.version = OUTPUT_CONFIG_VERSION; oldConfig.preferredFanPercent = 40;
     memcpy(oldSetup.config, &oldConfig, 32); oldSetup.config[30] = 255; oldSetup.config[31] = 255;
@@ -165,7 +165,14 @@ int main() {
     assert(!memory.InitialBaseline().Valid());
     assert(memory.FactoryReset() == 0);
     assert(!memory.InitialBaseline().Valid());
-    assert(memory.Config().occupancyAutomationEnabled);
-    assert(memory.Config().preferredCCTMireds == 333);
+    assert(!memory.Config().occupancyAutomationEnabled);
+    assert(memory.Config().preferredCCTMireds == 417);
+    assert(memory.Config().preferredBrightness == 60 && memory.Config().minBrightness == 30 && memory.Config().maxBrightness == 80);
+    assert(memory.Config().reliefHoldMs == 3000);
+    auto longHold = memory.Config(); longHold.reliefHoldMs = 1800000;
+    assert(memory.SaveConfig(longHold) == 0); memory.Initialize();
+    assert(memory.Config().reliefHoldMs == 1800000);
+    longHold.reliefHoldMs = MAX_RELIEF_HOLD_MS + 1;
+    assert(memory.SaveConfig(longHold) == 0 && memory.Config().reliefHoldMs == MAX_RELIEF_HOLD_MS);
     puts("preferred tone persistence, v4 migration and existing device/runtime records passed");
 }

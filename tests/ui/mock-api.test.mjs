@@ -15,7 +15,14 @@ async function request(url, body) {
   return result;
 }
 const profile=(await request('/api/profile')).body;
-assert.equal(profile.preferredCCTMireds,333);
+assert.equal(profile.preferredCCTMireds,417);
+assert.equal(profile.preferredBrightness,60); assert.equal(profile.minBrightness,30); assert.equal(profile.maxBrightness,80);
+assert.equal(profile.reliefHoldMs,3000); assert.equal(profile.recoverConfirmMs,2500);
+assert.equal(profile.occupancyAutomationEnabled,false);
+assert.equal((await request('/api/profile',{reliefHoldMs:1800000})).status,200);
+assert.equal((await request('/api/profile')).body.reliefHoldMs,1800000);
+assert.equal((await request('/api/profile',{reliefHoldMs:3600001})).status,400);
+await request('/api/profile',profile);
 for (const tone of [250,333,417]) {
   assert.equal((await request('/api/profile',{...profile,preferredCCTMireds:tone})).status,200);
   assert.equal((await request('/api/profile')).body.preferredCCTMireds,tone);
@@ -47,6 +54,8 @@ assert.equal((await request('/api/status')).body.outputs.fanPercent,20);
 await request('/__mock/scenario',{scenario:'mic-error'});
 assert.equal((await request('/api/status')).body.sensor.micValid,false);
 await request('/__mock/scenario',{scenario:'vacant'});
+assert.equal((await request('/api/status')).body.outputs.fanOn,true); // Demo default keeps automatic output without motion.
+await request('/api/profile',{occupancyAutomationEnabled:true});
 assert.equal((await request('/api/status')).body.outputs.fanOn,false);
 await request('/__mock/scenario',{scenario:'command-error'});
 assert.equal((await request('/api/fan',{power:true,speed:40})).status,503);

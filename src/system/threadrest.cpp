@@ -408,7 +408,7 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
                      (payload.preferredFanPercent < 0 || payload.preferredFanPercent > payload.fanMaxPercent)) ||
                     ((parsed & kNormalCCTField) && (payload.normalCCTMireds < payload.minCCTMireds || payload.normalCCTMireds > payload.maxCCTMireds)) ||
                     ((parsed & kReliefFanField) && (payload.reliefFanPercent < 0 || payload.reliefFanPercent > 100 || (payload.reliefFanPercent > 0 && payload.reliefFanPercent < FAN_MIN_DUTY_PERCENT))) ||
-                    ((parsed & kReliefHoldField) && (payload.reliefHoldMs < 0 || payload.reliefHoldMs > 600000)) ||
+                    ((parsed & kReliefHoldField) && (payload.reliefHoldMs < 0 || payload.reliefHoldMs > MAX_RELIEF_HOLD_MS)) ||
                     ((parsed & kRecoverConfirmField) && (payload.recoverConfirmMs < 250 || payload.recoverConfirmMs > 60000))) {
                     ret = -EINVAL;
                 } else {

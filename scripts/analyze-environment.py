@@ -20,6 +20,8 @@ def summarize(name, rows):
     directions = [1 if b > a else -1 for a, b in zip(applied, applied[1:]) if a != b]
     return {
         "case": name,
+        "last60s_fan_target_changes": sum(a["target_fan"] != b["target_fan"] for a,b in zip(window,window[1:])),
+        "final_fan_percent": int(rows[-1]["applied_fan"]),
         "learning": rows[0]["learning"],
         "coupling_lux_per_percent": float(rows[0]["coupling"]),
         "preferred_brightness": int(rows[0]["preferred_brightness"]),
@@ -110,15 +112,18 @@ def main():
     if args.check:
         for summary in summaries:
             assert summary["last60s_target_changes"] == 0, summary
+            assert summary["last60s_fan_target_changes"] == 0, summary
             assert summary["last60s_direction_reversals"] == 0, summary
             if summary["case"].startswith(("manual-return-", "closed-restore-")):
                 assert summary["last60s_min_brightness"] == summary["preferred_brightness"], summary
+                assert summary["final_fan_percent"] == 60, summary
             if summary["case"].startswith("manual-return-"):
                 assert abs(summary["initial_baseline_lux"] - summary["final_baseline_lux"]) < .001, summary
             if summary["case"].startswith("dim-restore-"):
                 assert summary["final_baseline_lux"] == summary["initial_baseline_lux"], summary
                 assert summary["final_score"] == 0, summary
                 assert summary["last60s_min_brightness"] == summary["preferred_brightness"], summary
+                assert summary["final_fan_percent"] == 60, summary
         print(f"Steady output and recovery assertions passed: {len(summaries)} cases")
     with (args.directory/"summary.csv").open("w") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(summaries[0]))

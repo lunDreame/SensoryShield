@@ -28,7 +28,8 @@
 #define FAN_MIN_DUTY_PERCENT 18
 #define AUTO_FAN_QUIET_PERCENT 20
 #define AUTO_FAN_NORMAL_PERCENT 60
-#define AUTO_RELIEF_HOLD_MS 1500
+#define AUTO_RELIEF_HOLD_MS 3000 // Demo default; real-use hold is guardian configurable.
+#define MAX_RELIEF_HOLD_MS (60 * 60 * 1000)
 #define AUTO_RECOVER_CONFIRM_MS 2500
 #define STIMULUS_MAX_SCORE 4.0f
 #define OVERRIDE_DURATION_MS 900000
@@ -37,22 +38,22 @@ struct AppConfig {
     uint32_t version = CONFIG_VERSION;
     float lightWeight = 0.55f;
     float soundWeight = 0.45f;
-    uint8_t minBrightness = 1;
-    uint8_t maxBrightness = 100;
+    uint8_t minBrightness = 30;
+    uint8_t maxBrightness = 80;
     uint16_t minCCTMireds = 250;
     uint16_t maxCCTMireds = 454;
     uint8_t fanMaxPercent = 100;
     uint32_t occupancyTimeoutMs = AUTO_OCCUPANCY_HOLD_MS;
     bool profileConfigured = false;
-    uint16_t preferredCCTMireds = 333;
-    uint8_t preferredBrightness = 100;
+    uint16_t preferredCCTMireds = 417;
+    uint8_t preferredBrightness = 60;
     uint8_t preferredFanPercent = AUTO_FAN_NORMAL_PERCENT;
     uint8_t reservedV7Padding[2] = {}; // Keep legacy fields at their original offsets.
     uint16_t normalCCTMireds = 250;
     uint8_t reliefFanPercent = AUTO_FAN_QUIET_PERCENT;
     uint32_t reliefHoldMs = AUTO_RELIEF_HOLD_MS;
     uint32_t recoverConfirmMs = AUTO_RECOVER_CONFIRM_MS;
-    bool occupancyAutomationEnabled = true;
+    bool occupancyAutomationEnabled = false; // Enable explicitly for the occupancy demo.
 };
 
 struct ChildDeviceDescriptor {

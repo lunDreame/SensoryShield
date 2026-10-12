@@ -1,12 +1,13 @@
-#include "common/algorithm/sound_fan.h"
+#include "fan_probe.h"
 #include <cassert>
 #include <cstdio>
 #include <limits>
 
 struct Rig {
-    SoundFanController controller;
+    FanProbe controller;
     StimulusScorer scorer;
     AppConfig config;
+    Rig() { config.occupancyAutomationEnabled=true; config.reliefHoldMs=1500; }
     SensorSnapshot snapshot = {100, {0.01f, 0.02f, 0, 0, true}, true, 0, true, true, true};
     uint32_t now = 0;
     uint8_t evaluate() {

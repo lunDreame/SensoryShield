@@ -1,14 +1,32 @@
-#include "common/algorithm/light_presence.h"
+#include "common/algorithm/sensory_relief.h"
 #include <math.h>
 
-LightTarget LightPresenceController::Evaluate(const SensorSnapshot& snapshot, const AppConfig& config,
+SensoryTarget SensoryReliefController::Evaluate(const SensorSnapshot& snapshot, const AppConfig& config,
                                               float score, uint32_t now) {
     const uint8_t normal = ClampValue<uint8_t>(config.preferredBrightness, config.minBrightness, config.maxBrightness);
     const uint16_t normalCct = ClampValue<uint16_t>(config.normalCCTMireds, config.minCCTMireds, config.maxCCTMireds);
     const uint16_t reliefCct = ClampValue<uint16_t>(config.preferredCCTMireds, config.minCCTMireds, config.maxCCTMireds);
-    if (config.occupancyAutomationEnabled && !snapshot.occupied) { Reset(); return {false, 0, normalCct}; }
-    const bool trusted = snapshot.illuminanceValid && snapshot.micValid && snapshot.sound.valid && isfinite(score) &&
+    const uint8_t normalFan = NormalizeFanPercent(config.preferredFanPercent, config.fanMaxPercent);
+    const uint8_t quietFan = ClampValue<uint8_t>(NormalizeFanPercent(config.reliefFanPercent, config.fanMaxPercent), 0, normalFan);
+    if (config.occupancyAutomationEnabled && (!snapshot.pirValid || !snapshot.occupied)) {
+        Reset(); return {false, 0, normalCct, 0};
+    }
+    mFan = ClampValue<uint8_t>(mFan, 0, normalFan);
+    const auto& sound = snapshot.sound;
+    const bool trusted = snapshot.illuminanceValid && isfinite(snapshot.lux) && snapshot.lux >= 0 &&
+        snapshot.micValid && sound.valid && isfinite(score) && score >= 0 &&
+        isfinite(sound.energy) && isfinite(sound.peak) && isfinite(sound.delta) &&
+        sound.energy >= 0 && sound.energy <= 1 && sound.peak >= sound.energy && sound.peak <= 1 &&
+        sound.delta >= 0 && sound.delta <= 1 && now - sound.timestampMs <= 1000U &&
         (!snapshot.observedOutputs.valid || now - snapshot.observedAtMs <= 1000U);
+    mBrightness = ClampValue<uint8_t>(mBrightness, config.minBrightness, normal);
+    mCct = ClampValue<uint16_t>(mCct, config.minCCTMireds, config.maxCCTMireds);
+    if (!snapshot.controlInputsSettled) { mHighPending = mLowPending = false; mStepAt = now; }
+    if (trusted && mSeen && sound.timestampMs == mLastSample) return Target();
+    if (trusted && mSeen && sound.timestampMs - mLastSample > 1000U) {
+        mHighPending = mLowPending = false; mRecoverPaused = true;
+    }
+    if (trusted) { mLastSample = sound.timestampMs; mSeen = true; }
     const bool valid = trusted && snapshot.controlInputsSettled;
     const float limited = isfinite(score) ? ClampValue(score, 0.0f, STIMULUS_MAX_SCORE) : STIMULUS_MAX_SCORE;
     // A threshold crossing starts with a small drop, rather than jumping to 65%.
@@ -21,15 +39,17 @@ LightTarget LightPresenceController::Evaluate(const SensorSnapshot& snapshot, co
     mCct = ClampValue<uint16_t>(mCct, config.minCCTMireds, config.maxCCTMireds);
     if (!trusted && mState == State::Normal) {
         mHighPending = mLowPending = false;
+        // Invalid input cannot confirm a recovery; keep fan at the configured safe output.
+        mFan = quietFan;
         if (snapshot.observedOutputs.valid) {
             const auto& observed = snapshot.observedOutputs;
             mBrightness = observed.lightOn ? ClampValue<uint8_t>(observed.brightness, 0, normal) : 0;
             mCct = ClampValue<uint16_t>(observed.cct, config.minCCTMireds, config.maxCCTMireds);
         }
-        return {mBrightness > 0, mBrightness, mCct};
+        return Target();
     }
     if (mState == State::Normal) {
-        mBrightness = normal; mCct = normalCct;
+        mBrightness = normal; mCct = normalCct; mFan = normalFan; mFanStepAt = now;
         if (valid && limited >= EnterScore) {
             if (!mHighPending) { mHighPending = true; mHighSince = now; mPendingBrightness = desired; }
             // Confirm only the reduction supported throughout this interval;
@@ -38,7 +58,7 @@ LightTarget LightPresenceController::Evaluate(const SensorSnapshot& snapshot, co
             if (now - mHighSince >= EnterMs) {
                 mState = State::Relief;
                 mBrightness = ClampValue(mPendingBrightness, config.minBrightness, normal); mCct = reliefCct;
-                mReliefSince = now; mHighPending = false;
+                mReliefSince = now; mHighPending = false; mFanStepAt = now - ALGORITHM_PERIOD_MS;
             }
         } else mHighPending = false;
     } else if (mState == State::Relief) {
@@ -57,12 +77,13 @@ LightTarget LightPresenceController::Evaluate(const SensorSnapshot& snapshot, co
                 mReliefSince = now; mHighPending = mLowPending = false;
             }
         } else mHighPending = false;
-        const bool canRetry = !toneChanged && valid && mRetry.MayRecover(snapshot, true);
+        const bool atRelief = mFan <= quietFan || mRetry.IsBlocked();
+        const bool canRetry = !toneChanged && valid && atRelief && mRetry.MayRecover(snapshot, true);
         if (canRetry && limited <= RecoverScore && now - mReliefSince >= config.reliefHoldMs) {
             if (!mLowPending) { mLowPending = true; mLowSince = now; }
             if (now - mLowSince >= config.recoverConfirmMs) {
                 mState = State::Recover; mLowPending = false; mRecoverPaused = false; mStepAt = now;
-                mRecoveryStart = mLastSafe = mBrightness; mRecoveryStartCct = mCct;
+                mRecoveryStart = mLastSafe = mBrightness; mRecoveryFan = mLastSafeFan = mFan; mRecoveryStartCct = mCct;
             }
         } else mLowPending = false;
     } else {
@@ -73,7 +94,7 @@ LightTarget LightPresenceController::Evaluate(const SensorSnapshot& snapshot, co
             if (!mHighPending) { mHighPending = true; mHighSince = now; }
             if (now - mHighSince >= EnterMs) {
                 mState = State::Relief; mReliefSince = now; mHighPending = false;
-                mBrightness = mLastSafe; // Undo only the failed step; do not repeat a large drop.
+                mBrightness = ClampValue<uint8_t>(mLastSafe, config.minBrightness, normal); mFan = ClampValue<uint8_t>(mLastSafeFan, 0, normalFan); // Undo the failed pair of steps.
                 mCct = reliefCct; mRetry.Block();
             }
         } else if (limited > RecoverScore) {
@@ -83,25 +104,36 @@ LightTarget LightPresenceController::Evaluate(const SensorSnapshot& snapshot, co
             mHighPending = false;
             if (mRecoverPaused) {
                 if (!mLowPending) { mLowPending = true; mLowSince = now; }
-                if (now - mLowSince < config.recoverConfirmMs) return {mBrightness > 0, mBrightness, mCct};
+                if (now - mLowSince < config.recoverConfirmMs) return Target();
                 mLowPending = false; mRecoverPaused = false; mStepAt = now;
             }
             if (now - mStepAt >= RecoveryStepMs) {
-                mLastSafe = mBrightness;
+                mLastSafe = mBrightness; mLastSafeFan = mFan;
+                const uint8_t fanRemaining = normalFan - mFan;
+                mFan += fanRemaining > StimulusPolicy::OutputStepPercent ? StimulusPolicy::OutputStepPercent : fanRemaining;
                 const uint8_t remaining = normal - mBrightness;
                 mBrightness += remaining > StimulusPolicy::OutputStepPercent ? StimulusPolicy::OutputStepPercent : remaining;
                 mStepAt = now;
-                const float fraction = normal > mRecoveryStart ? float(normal - mBrightness) / (normal - mRecoveryStart) : 0;
+                const float lightFraction = normal > mRecoveryStart ? float(normal - mBrightness) / (normal - mRecoveryStart) : 0;
+                const float fanFraction = normalFan > mRecoveryFan ? float(normalFan - mFan) / (normalFan - mRecoveryFan) : 0;
+                const float fraction = lightFraction > fanFraction ? lightFraction : fanFraction;
                 mCct = static_cast<uint16_t>(normalCct + (mRecoveryStartCct - normalCct) * fraction);
-                if (mBrightness == normal) {
+                if (mBrightness == normal && mFan == normalFan) {
                     // Do not resume learning until the last output step is observed stable and low.
                     if (!snapshot.observedOutputs.valid ||
-                        (snapshot.observedOutputs.brightness == normal && snapshot.observedOutputs.cct == normalCct)) {
+                        (snapshot.observedOutputs.brightness == normal && snapshot.observedOutputs.cct == normalCct && snapshot.observedOutputs.fanPercent == normalFan)) {
                         mState = State::Normal; mRetry.Reset();
                     }
                 }
             }
         }
     }
-    return {mBrightness > 0, mBrightness, mCct};
+    // Continue the downward fan ramp even while actual outputs are settling.
+    // A failed recovery holds the safe pair until the environment improves.
+    if (mState == State::Relief && !mRetry.IsBlocked() && now - mFanStepAt >= ALGORITHM_PERIOD_MS) {
+        if (mFan > quietFan) mFan -= mFan - quietFan > StimulusPolicy::OutputStepPercent ? StimulusPolicy::OutputStepPercent : mFan - quietFan;
+        mFanStepAt = now;
+    }
+    if (!trusted) { mHighPending = mLowPending = false; if (mFan > quietFan) mFan = quietFan; }
+    return Target();
 }

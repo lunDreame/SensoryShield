@@ -68,7 +68,7 @@ await applyChildComfort('LOUD', api);
 assert.equal((await api.getStatus()).outputs.fanOn, false); // Stop below minimum motor duty.
 assert.equal((await api.getStatus()).outputs.lightOn, false);
 await applyChildComfort('DARK', api);
-assert.equal((await api.getStatus()).outputs.brightnessPercent, 10);
+assert.equal((await api.getStatus()).outputs.brightnessPercent, stored.minBrightness);
 
 await request('/api/profile', { ...stored, minBrightness: 20, maxBrightness: 50, preferredBrightness: 40, fanMaxPercent: 30, preferredFanPercent: 20 });
 await request('/api/light', { power: true, brightness: 25, cct: 333 });

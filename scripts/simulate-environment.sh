@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 output_dir="${1:-/tmp/sensoryshield-environment-simulation}"
 mkdir -p "$output_dir"
-"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -Itests/host/stubs -Isrc tests/host/environment_simulation.cpp src/common/algorithm/algorithm.cpp src/common/algorithm/stimulus_score.cpp src/common/algorithm/baseline.cpp src/common/algorithm/light_presence.cpp -o "$output_dir/simulate"
+"${CXX:-c++}" -std=c++17 -Wall -Wextra -Werror -Itests/host/stubs -Isrc tests/host/environment_simulation.cpp src/common/algorithm/algorithm.cpp src/common/algorithm/stimulus_score.cpp src/common/algorithm/baseline.cpp src/common/algorithm/sensory_relief.cpp -o "$output_dir/simulate"
 for scenario in daylight-slow daylight-fast dim-restore; do
   for learning in learn freeze; do
     "$output_dir/simulate" "$scenario" "$learning" 0 > "$output_dir/$scenario-$learning.csv"

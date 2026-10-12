@@ -4,7 +4,7 @@
 uint32_t testUptimeMs = 1000;
 void sharedSoundPolicy() {
     auto& a = Algorithm::Instance();
-    AppConfig c;
+    AppConfig c; c.minBrightness=1; c.maxBrightness=100; c.preferredBrightness=100; c.reliefHoldMs=1500; c.occupancyAutomationEnabled=true;
     a.Initialize(c);
     SensorSnapshot s = {100, {.01f, .01f, 0, 0, true}, true, 1, true, true, true};
     ControlTarget target{};
@@ -40,13 +40,13 @@ void sharedSoundPolicy() {
     assert(target.fanPercent == 20); // Recovery starts; first output step follows 500 ms.
     for (int i = 0; i < 200; ++i) tick(100, .01f);
     assert(target.brightnessPercent == 100 && target.fanPercent == 60);
-    // Lighting uses the sum; fan uses only sound, never a light-only event.
+    // Both use the sum, including mixed inputs individually below entry.
     for (int i = 0; i < 20; ++i) tick(103, .014f);
-    assert(target.brightnessPercent < 100 && target.fanPercent == 60);
+    assert(target.brightnessPercent < 100 && target.fanPercent < 60);
     a.Initialize(c);
     for (int i = 0; i < 100; ++i) tick(100, .01f);
     for (int i = 0; i < 20; ++i) tick(120, .01f);
-    assert(target.brightnessPercent < 100 && target.fanPercent == 60);
+    assert(target.brightnessPercent < 100 && target.fanPercent < 60);
     // Both still learn outside occupied control intervals; no separate fan baseline.
     a.Initialize(c); s.occupied = false; s.lastMotionMs = 0;
     for (int i = 0; i < 100; ++i) tick(100, .01f);
@@ -56,7 +56,7 @@ void sharedSoundPolicy() {
 }
 void coupledOutputs(float lampCoupling, float fanCoupling) {
     auto& a = Algorithm::Instance();
-    AppConfig config; config.preferredCCTMireds = 417;
+    AppConfig config; config.minBrightness=1; config.maxBrightness=100; config.preferredBrightness=100; config.reliefHoldMs=1500; config.occupancyAutomationEnabled=true; config.preferredCCTMireds = 417;
     a.Initialize(config);
     uint8_t brightness = 100, fan = 20;
     uint16_t cct = config.minCCTMireds;
@@ -100,7 +100,7 @@ void coupledOutputs(float lampCoupling, float fanCoupling) {
 }
 int main() {
     auto& a = Algorithm::Instance();
-    AppConfig config; config.minBrightness = 20; config.maxBrightness = 80;
+    AppConfig config; config.minBrightness=1; config.maxBrightness=100; config.preferredBrightness=100; config.reliefHoldMs=1500; config.occupancyAutomationEnabled=true; config.minBrightness = 20; config.maxBrightness = 80;
     a.Initialize(config);
     SensorSnapshot s = {100, {.01f, .01f, 0, testUptimeMs, true}, true, testUptimeMs, true, true, true};
     for (int i = 0; i < ENVIRONMENT_SAMPLE_CAPACITY; ++i) {
