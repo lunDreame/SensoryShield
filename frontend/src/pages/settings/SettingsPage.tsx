@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getProfile, saveProfile } from "../../shared/api/client";
 import { describeKelvin, describeSensitivity } from "../../shared/lib/environment-labels";
+import { demoTimingDefaults } from "../../shared/lib/demo-defaults";
 import { Panel } from "../../shared/ui/Panel";
 import type { AppConfig } from "../../shared/types/domain";
 
@@ -14,9 +15,9 @@ const initialConfig: AppConfig = {
   preferredCCTMireds: 417,
   preferredBrightness: 60,
   preferredFanPercent: 60,
-  normalCCTMireds: 250, reliefFanPercent: 20, reliefHoldMs: 3000, recoverConfirmMs: 2500,
+  normalCCTMireds: 250, reliefFanPercent: 20,
+  ...demoTimingDefaults,
   fanMaxPercent: 100,
-  occupancyTimeoutMs: 30000,
   occupancyAutomationEnabled: false,
   profileConfigured: true
 };
@@ -128,8 +129,8 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
     if (!Number.isInteger(config.preferredFanPercent) || config.preferredFanPercent < 0 || config.preferredFanPercent > config.fanMaxPercent) {
       setError("평소 바람 세기를 0에서 최대 바람 세기 사이로 설정해 주세요."); return;
     }
-    if (config.occupancyTimeoutMs < 1000 || config.occupancyTimeoutMs > 600000) {
-      setError("움직임 후 유지 시간은 1초에서 10분 사이로 설정해 주세요.");
+    if (config.occupancyTimeoutMs < 1000 || config.occupancyTimeoutMs > 3600000) {
+      setError("움직임 후 유지 시간은 1초에서 60분 사이로 설정해 주세요.");
       return;
     }
     if (config.minCCTMireds > config.maxCCTMireds) {
@@ -189,8 +190,8 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
     minBrightness: "변화가 커질수록 이 하한 쪽으로 낮춰요. 모든 자극에서 바로 이 밝기로 내려가지는 않아요.",
     preferredCCTMireds: "조명을 낮출 때 사용할 빛이에요. 따뜻한 빛과 선명한 빛 중 아이에게 맞게 정해주세요.",
     reliefFanPercent: "빛과 소리의 합산 변화가 커지면 이 세기로 줄여요. 평소 세기보다 높아지지 않으며, 0%는 팬을 꺼요.",
-    reliefHoldMs: "완화를 시작한 뒤 최소한 유지할 시간이에요. 시간이 지나도 큰 변화가 남아 있으면 유지해요. 기본 3초는 시연용이에요. 실제 사용은 1,800초(30분)를 시작값으로 정하고 아이에 맞게 조절할 수 있어요.",
-    recoverConfirmMs: "최소 유지 후, 변화가 낮은 상태로 이 시간 동안 이어지면 평소 출력으로 서서히 돌아가요.",
+    reliefHoldMs: "완화를 시작한 뒤 최소한 유지할 시간이에요. 시간이 지나도 큰 변화가 남아 있으면 유지해요. 시연 시작값은 3초예요. 실사용 시작 설정 예시는 1,800초(30분)이며, 아이에게 맞게 조절할 수 있어요.",
+    recoverConfirmMs: "최소 유지 후, 변화가 낮은 상태로 이 시간 동안 이어지면 평소 출력으로 서서히 돌아가요. 시연 시작값은 3초예요. 아이의 진정 시간이 아니라 센서 변화의 안정 확인 시간이며, 실제 환경에 맞게 조절할 수 있어요.",
     preferredBrightness: "자동 모드에서 평소 사용할 밝기이며 완화 후 이 밝기로 돌아와요.",
     normalCCTMireds: "평소 사용할 빛이에요. 완화할 때 사용할 빛과 따로 정할 수 있어요.",
     preferredFanPercent: "평소 팬 세기이며 완화 후 돌아갈 값이에요. 0%는 자동 팬을 꺼둬요.",
@@ -205,7 +206,7 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
     const time = key.endsWith("Ms");
     const sensitivity = key === "lightWeight" || key === "soundWeight";
     const minimum = cct ? 2203 : key === "recoverConfirmMs" ? .25 : key === "occupancyTimeoutMs" ? 1 : 0;
-    const maximum = cct ? 4000 : key === "recoverConfirmMs" ? 60 : key === "reliefHoldMs" ? 3600 : time ? 600 : 100;
+    const maximum = cct ? 4000 : key === "recoverConfirmMs" ? 60 : key === "reliefHoldMs" ? 3600 : time ? 3600 : 100;
     return <label className="input-line" key={key}>
       <span>{labels[key].title}</span>
       <div className="field-with-unit">

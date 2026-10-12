@@ -1,4 +1,7 @@
 // Vite development middleware only. Fixtures illustrate UI states, not firmware predictions.
+// 시연 시간은 펌웨어와 동일: 유지 3초 / 복귀 확인 3초 / 재실 유지 30초.
+// 실사용 시작 예시(응답용 모의값에는 적용하지 않음): reliefHoldMs: 1800000,
+// recoverConfirmMs: 3000(공통 공학 설정·검증 대상), occupancyTimeoutMs: 900000.
 export function mockApi() {
   const normalizeFan = (requested, cap) => requested <= 0 || cap < 18 ? 0 : Math.min(cap, Math.max(18, requested));
   let scenario = "normal";
@@ -9,7 +12,7 @@ export function mockApi() {
   const started = Date.now();
   let profile = { lightWeight: 0.55, soundWeight: 0.45, minBrightness: 30, maxBrightness: 80,
     minCCTMireds: 250, maxCCTMireds: 454, preferredCCTMireds: 417, preferredBrightness: 60, preferredFanPercent: 60, fanMaxPercent: 100, occupancyTimeoutMs: 30000, occupancyAutomationEnabled: false,
-    normalCCTMireds:250, reliefFanPercent:20, reliefHoldMs:3000, recoverConfirmMs:2500, profileConfigured: false };
+    normalCCTMireds:250, reliefFanPercent:20, reliefHoldMs:3000, recoverConfirmMs:3000, profileConfigured: false };
   let initialEnvironment = null;
   let measurement = {state:"idle",samples:0,requiredSamples:31,luxMedian:0,luxMad:0,soundMedian:0,soundMad:0};
   let measurementStarted = 0;
@@ -57,7 +60,7 @@ export function mockApi() {
         // The vacant fixture represents an already-expired hold; real timing is covered in C++ tests.
         const autoAbsent = vacant && profile.occupancyAutomationEnabled;
         const impulse = scenario === "impulse" && Math.floor(Date.now()/1500)%4 === 0;
-        const autoCct = noise || impulse ? profile.preferredCCTMireds : profile.normalCCTMireds;
+        const autoCct = noise ? profile.preferredCCTMireds : profile.normalCCTMireds;
         const autoBrightness = autoAbsent ? 0 : noise ? Math.round(profile.preferredBrightness - (profile.preferredBrightness - profile.minBrightness) * .75) : profile.preferredBrightness;
         const normalFan = normalizeFan(profile.preferredFanPercent, profile.fanMaxPercent);
         const reliefFan = normalizeFan(profile.reliefFanPercent, profile.fanMaxPercent);
@@ -89,6 +92,7 @@ export function mockApi() {
         if (path === "/api/profile") {
           if (req.method === "POST") {
             const next = {...profile, ...body};
+            if (!Number.isInteger(next.occupancyTimeoutMs) || next.occupancyTimeoutMs < 1000 || next.occupancyTimeoutMs > 3600000) {send(400,{ok:false});return;}
             if (typeof next.occupancyAutomationEnabled !== "boolean") {send(400,{ok:false}); return;}
             if (!Number.isInteger(next.preferredCCTMireds) || next.preferredCCTMireds < next.minCCTMireds || next.preferredCCTMireds > next.maxCCTMireds) {
               send(400, {ok:false}); return;

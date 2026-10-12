@@ -30,7 +30,7 @@ int main() {
         for (int i=0; i<60; ++i) r.tick(0.15f);
         assert(r.tick(0.15f) == AUTO_FAN_QUIET_PERCENT); // Sustained sound cannot disappear into baseline.
         for (int i=0; i<10; ++i) assert(r.tick() == AUTO_FAN_QUIET_PERCENT);
-        for (int i=0; i<40; ++i) r.tick();
+        for (uint32_t i=0; i<r.config.recoverConfirmMs/ALGORITHM_PERIOD_MS+40; ++i) r.tick();
         assert(r.tick() == AUTO_FAN_NORMAL_PERCENT);
     }
     {

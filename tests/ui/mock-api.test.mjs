@@ -17,12 +17,21 @@ async function request(url, body) {
 const profile=(await request('/api/profile')).body;
 assert.equal(profile.preferredCCTMireds,417);
 assert.equal(profile.preferredBrightness,60); assert.equal(profile.minBrightness,30); assert.equal(profile.maxBrightness,80);
-assert.equal(profile.reliefHoldMs,3000); assert.equal(profile.recoverConfirmMs,2500);
+assert.equal(profile.reliefHoldMs,3000); assert.equal(profile.recoverConfirmMs,3000);
 assert.equal(profile.occupancyAutomationEnabled,false);
 assert.equal((await request('/api/profile',{reliefHoldMs:1800000})).status,200);
 assert.equal((await request('/api/profile')).body.reliefHoldMs,1800000);
 assert.equal((await request('/api/profile',{reliefHoldMs:3600001})).status,400);
 await request('/api/profile',profile);
+assert.equal((await request('/api/profile',{occupancyTimeoutMs:900000})).status,200);
+assert.equal((await request('/api/profile')).body.occupancyTimeoutMs,900000);
+assert.equal((await request('/api/profile',{occupancyTimeoutMs:3600001})).status,400);
+await request('/api/profile',profile);
+// Transient sound fixture may raise the displayed score, but must not change tone/output.
+await request('/__mock/scenario',{scenario:'impulse'});
+assert.equal((await request('/api/status')).body.outputs.cctMireds,profile.normalCCTMireds);
+assert.equal((await request('/api/status')).body.outputs.fanPercent,profile.preferredFanPercent);
+await request('/__mock/scenario',{scenario:'normal'});
 for (const tone of [250,333,417]) {
   assert.equal((await request('/api/profile',{...profile,preferredCCTMireds:tone})).status,200);
   assert.equal((await request('/api/profile')).body.preferredCCTMireds,tone);

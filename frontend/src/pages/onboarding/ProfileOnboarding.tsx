@@ -42,7 +42,7 @@ export function ProfileOnboarding({ initialConfig, onComplete }: ProfileOnboardi
     finally { setPending(false); }
   }
   const questions = [
-    { title: "갑자기 밝아질 때 얼마나 불편한가요?", description: "평소보다 밝아졌을 때 조명을 낮추는 정도를 정해요.", value: lightSensitivity, select: setLightSensitivity },
+    { title: "갑자기 밝아질 때 얼마나 불편한가요?", description: "평소보다 밝아졌을 때 조명과 팬을 함께 완화하는 반응 정도를 정해요.", value: lightSensitivity, select: setLightSensitivity },
     { title: "소리가 커질 때 얼마나 불편한가요?", description: "평소보다 소리가 커졌을 때 조명과 팬이 반응하는 정도를 정해요.", value: soundSensitivity, select: setSoundSensitivity }
   ];
   const selectedPreset = tones.reduce((closest, tone) => Math.abs(tone.cct - cct) < Math.abs(closest.cct - cct) ? tone : closest, tones[0]);

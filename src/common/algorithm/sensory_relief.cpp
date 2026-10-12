@@ -35,8 +35,6 @@ SensoryTarget SensoryReliefController::Evaluate(const SensorSnapshot& snapshot, 
     const uint8_t firstDrop = range < StimulusPolicy::OutputStepPercent ? range : StimulusPolicy::OutputStepPercent;
     const float strength = ClampValue((limited - EnterScore) / (STIMULUS_MAX_SCORE - EnterScore), 0.0f, 1.0f);
     const uint8_t desired = normal - static_cast<uint8_t>(roundf(firstDrop + (range - firstDrop) * strength));
-    mBrightness = ClampValue<uint8_t>(mBrightness, config.minBrightness, normal);
-    mCct = ClampValue<uint16_t>(mCct, config.minCCTMireds, config.maxCCTMireds);
     if (!trusted && mState == State::Normal) {
         mHighPending = mLowPending = false;
         // Invalid input cannot confirm a recovery; keep fan at the configured safe output.
@@ -111,6 +109,9 @@ SensoryTarget SensoryReliefController::Evaluate(const SensorSnapshot& snapshot, 
                 mLastSafe = mBrightness; mLastSafeFan = mFan;
                 const uint8_t fanRemaining = normalFan - mFan;
                 mFan += fanRemaining > StimulusPolicy::OutputStepPercent ? StimulusPolicy::OutputStepPercent : fanRemaining;
+                // 1..17% is not a realizable motor output. Request the same
+                // minimum duty the device applies, or settling would never finish.
+                mFan = NormalizeFanPercent(mFan, config.fanMaxPercent);
                 const uint8_t remaining = normal - mBrightness;
                 mBrightness += remaining > StimulusPolicy::OutputStepPercent ? StimulusPolicy::OutputStepPercent : remaining;
                 mStepAt = now;
@@ -131,7 +132,10 @@ SensoryTarget SensoryReliefController::Evaluate(const SensorSnapshot& snapshot, 
     // Continue the downward fan ramp even while actual outputs are settling.
     // A failed recovery holds the safe pair until the environment improves.
     if (mState == State::Relief && !mRetry.IsBlocked() && now - mFanStepAt >= ALGORITHM_PERIOD_MS) {
-        if (mFan > quietFan) mFan -= mFan - quietFan > StimulusPolicy::OutputStepPercent ? StimulusPolicy::OutputStepPercent : mFan - quietFan;
+        if (mFan > quietFan) {
+            mFan -= mFan - quietFan > StimulusPolicy::OutputStepPercent ? StimulusPolicy::OutputStepPercent : mFan - quietFan;
+            if (mFan > 0 && mFan < FAN_MIN_DUTY_PERCENT) mFan = 0;
+        }
         mFanStepAt = now;
     }
     if (!trusted) { mHighPending = mLowPending = false; if (mFan > quietFan) mFan = quietFan; }

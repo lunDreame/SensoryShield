@@ -200,7 +200,8 @@ bool IsValidProfileRequest(const ProfileRequest& payload) {
            payload.maxBrightness >= payload.minBrightness && payload.maxBrightness <= 100 &&
            payload.minCCTMireds >= 1 && payload.minCCTMireds <= 1000 &&
            payload.maxCCTMireds >= payload.minCCTMireds && payload.maxCCTMireds <= 1000 &&
-           payload.fanMaxPercent >= 0 && payload.fanMaxPercent <= 100 && payload.occupancyTimeoutMs >= 1000;
+           payload.fanMaxPercent >= 0 && payload.fanMaxPercent <= 100 &&
+           payload.occupancyTimeoutMs >= 1000 && payload.occupancyTimeoutMs <= MAX_OCCUPANCY_HOLD_MS;
 }
 
 int ParseFixedToken(const json_obj_token& token, float* value) {

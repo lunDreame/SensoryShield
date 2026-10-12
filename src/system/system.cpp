@@ -13,6 +13,7 @@
 #include "system/matter_bridge.h"
 #include "system/memory.h"
 #include "system/threadrest.h"
+#include "system/output_retry.h"
 
 #include <errno.h>
 #include <string.h>
@@ -345,6 +346,7 @@ int System::SetMode(ControlMode mode, uint32_t overrideDurationMs) {
     const ControlMode previous = mMode;
     mMode = mode;
     const ControlMode current = mMode;
+    if (previous != current) GetAlgorithm()->ResetAutomaticLight();
     const ControlTarget target = mManualTarget;
     k_mutex_unlock(&mLock);
     OnModeChanged(previous, current);
@@ -394,7 +396,6 @@ int System::SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMired
     mMeasurement.Invalidate();
     ControlTarget next = mManualTarget;
     const ControlMode mode = mMode;
-    k_mutex_unlock(&mLock);
 
     if (mode != ControlMode::Manual && mode != ControlMode::Override) {
         const FanState fan = GetFanDevice()->CurrentState();
@@ -408,18 +409,24 @@ int System::SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMired
     next.red = red;
     next.green = green;
     next.blue = blue;
-    const int ret = GetLightDevice()->ApplyTarget(next.lightOn, next.brightnessPercent, next.cctMireds, next.rgbMode,
-                                                  next.red, next.green, next.blue);
+    const int ret = GetLightDevice()->ApplyTargetNoMatter(next.lightOn, next.brightnessPercent, next.cctMireds, next.rgbMode,
+                                                        next.red, next.green, next.blue);
     if (ret != 0) {
+        k_mutex_unlock(&mLock);
         return ret;
     }
     SyncAppliedTargetFromDevices(next);
-    k_mutex_lock(&mLock, K_FOREVER);
     mManualTarget = next;
     mTarget = next;
     mAppliedTarget = next;
+    mMode = ControlMode::Manual;
+    mOverrideDeadlineMs = 0;
+    if (mode != ControlMode::Manual) GetAlgorithm()->ResetAutomaticLight();
     k_mutex_unlock(&mLock);
-    return SetMode(ControlMode::Manual);
+    OnModeChanged(mode, ControlMode::Manual);
+    SyncMatterDirtyDevices(false);
+    PersistRuntimeState(ControlMode::Manual, next);
+    return 0;
 }
 
 int System::SetManualFan(bool on, uint8_t speedPercent) {
@@ -427,7 +434,6 @@ int System::SetManualFan(bool on, uint8_t speedPercent) {
     mMeasurement.Invalidate();
     ControlTarget next = mManualTarget;
     const ControlMode mode = mMode;
-    k_mutex_unlock(&mLock);
 
     if (mode != ControlMode::Manual && mode != ControlMode::Override) {
         const LightState light = GetLightDevice()->CurrentState();
@@ -441,17 +447,23 @@ int System::SetManualFan(bool on, uint8_t speedPercent) {
     }
     next.fanOn = on;
     next.fanPercent = speedPercent;
-    const int ret = GetFanDevice()->ApplyTarget(next.fanOn, next.fanPercent);
+    const int ret = GetFanDevice()->ApplyTargetNoMatter(next.fanOn, next.fanPercent);
     if (ret != 0) {
+        k_mutex_unlock(&mLock);
         return ret;
     }
     SyncAppliedTargetFromDevices(next);
-    k_mutex_lock(&mLock, K_FOREVER);
     mManualTarget = next;
     mTarget = next;
     mAppliedTarget = next;
+    mMode = ControlMode::Manual;
+    mOverrideDeadlineMs = 0;
+    if (mode != ControlMode::Manual) GetAlgorithm()->ResetAutomaticLight();
     k_mutex_unlock(&mLock);
-    return SetMode(ControlMode::Manual);
+    OnModeChanged(mode, ControlMode::Manual);
+    SyncMatterDirtyDevices(false);
+    PersistRuntimeState(ControlMode::Manual, next);
+    return 0;
 }
 
 int System::StartEnvironmentMeasurement() {
@@ -465,6 +477,7 @@ int System::StartEnvironmentMeasurement() {
     mTarget = mAppliedTarget;
     mMode = ControlMode::Manual;
     mOverrideDeadlineMs = 0;
+    if (previous != ControlMode::Manual) GetAlgorithm()->ResetAutomaticLight();
     const ControlTarget held = mManualTarget;
     mMeasurement.Start(k_uptime_get_32(), held.brightnessPercent, held.cctMireds);
     k_mutex_unlock(&mLock);
@@ -621,18 +634,12 @@ void System::AlgorithmWork() {
         mOverrideDeadlineMs = 0;
         mode = mMode;
         modeChanged = previousMode != mMode;
+        if (modeChanged) GetAlgorithm()->ResetAutomaticLight();
     }
     const SensorSnapshot snapshot = mSnapshot;
     const ControlTarget manualTarget = mManualTarget;
     ControlTarget safeTarget = mTarget;
-    k_mutex_unlock(&mLock);
-
-    if (modeChanged) {
-        OnModeChanged(previousMode, mode);
-    }
-
     // Keep scoring in every mode. Manual/override/safe input never updates the ordinary baseline.
-    k_mutex_lock(&mLock, K_FOREVER);
     const StimulusScore stimulus = GetAlgorithm()->EvaluateEnvironment(snapshot, mode == ControlMode::Auto);
     ControlTarget nextTarget = {};
     if (mode == ControlMode::Auto) {
@@ -654,6 +661,7 @@ void System::AlgorithmWork() {
     }
     k_mutex_unlock(&mLock);
 
+    if (modeChanged) OnModeChanged(previousMode, mode);
     SyncMatterDirtyDevices(false);
     k_work_schedule(&mAlgorithmWork, K_MSEC(ALGORITHM_PERIOD_MS));
 }
@@ -676,7 +684,6 @@ void System::ActuatorRampWork() {
     k_mutex_lock(&mLock, K_FOREVER);
     const ControlTarget target = mTarget;
     const ControlTarget appliedTarget = mAppliedTarget;
-    k_mutex_unlock(&mLock);
 
     ControlTarget next = appliedTarget;
     next.brightnessPercent = step(appliedTarget.brightnessPercent, target.lightOn ? target.brightnessPercent : 0U);
@@ -689,16 +696,16 @@ void System::ActuatorRampWork() {
     next.green = target.green;
     next.blue = target.blue;
     next.sensoryScore = target.sensoryScore;
-    if (next != appliedTarget) {
-        const int ret = ApplyTarget(next);
-        if (ret != 0) {
-            LOG_ERR("Ramp apply failed: %d", ret);
-        } else {
-            k_mutex_lock(&mLock, K_FOREVER);
-            mAppliedTarget = next;
-            k_mutex_unlock(&mLock);
-        }
+    const uint32_t now = k_uptime_get_32();
+    const bool retryFan = OutputRetryDue(GetFan()->GetOutputState().valid, now, mLastOutputAttemptMs);
+    int ret = 0;
+    if (next != appliedTarget || retryFan) {
+        mLastOutputAttemptMs = now;
+        ret = ApplyTarget(next);
+        if (ret == 0) mAppliedTarget = next;
     }
+    k_mutex_unlock(&mLock);
+    if (ret != 0) LOG_ERR("Ramp apply failed: %d", ret);
     k_work_schedule(&mActuatorRampWork, K_MSEC(ACTUATOR_RAMP_MS));
 }
 
@@ -745,32 +752,39 @@ int System::ApplyTarget(const ControlTarget& target) {
 void System::SetSafeState() {
     k_mutex_lock(&mLock, K_FOREVER);
     mMode = ControlMode::Safe;
+    mOverrideDeadlineMs = 0;
+    GetAlgorithm()->ResetAutomaticLight();
+    // Initialization/reset failures may return before actuator work is scheduled.
+    // Stop the physical fan now; never label an unapplied shutdown as applied.
+    const int ret = GetFanDevice()->ApplyTargetNoMatter(false, 0);
+    ControlTarget applied = {};
+    SyncAppliedTargetFromDevices(applied);
+    applied.sensoryScore = 0.0f;
+    mAppliedTarget = applied;
+    mTarget = applied;
+    mTarget.fanOn = false;
+    mTarget.fanPercent = 0;
     k_mutex_unlock(&mLock);
-
-    ControlTarget target = {};
-    SyncAppliedTargetFromDevices(target);
-    target.fanOn = false;
-    target.fanPercent = 0;
-    target.sensoryScore = 0.0f;
-
-    k_mutex_lock(&mLock, K_FOREVER);
-    mTarget = target;
-    mAppliedTarget = target;
-    k_mutex_unlock(&mLock);
+    if (ret != 0) LOG_WRN("Safe fan shutdown failed: %d", ret);
 }
 
 void System::OnModeChanged(ControlMode previous, ControlMode current) {
     if (previous == current) {
         return;
     }
-    k_mutex_lock(&mLock, K_FOREVER);
-    GetAlgorithm()->ResetAutomaticLight();
-    k_mutex_unlock(&mLock);
     LOG_INF("Mode changed: %u -> %u", static_cast<unsigned int>(previous), static_cast<unsigned int>(current));
 }
 
 void System::PersistRuntimeState(ControlMode mode, const ControlTarget& target) {
-    const int ret = GetMemory()->SaveRuntimeState(mode, target);
+    k_mutex_lock(&mLock, K_FOREVER);
+    // Do not persist an older command after a newer mode/output won the lock.
+    if (mMode != mode) {
+        k_mutex_unlock(&mLock);
+        return;
+    }
+    const ControlTarget current = mode == ControlMode::Manual || mode == ControlMode::Override ? mManualTarget : target;
+    const int ret = GetMemory()->SaveRuntimeState(mode, current);
+    k_mutex_unlock(&mLock);
     if (ret != 0) {
         LOG_WRN("Runtime state save skipped: %d", ret);
     }

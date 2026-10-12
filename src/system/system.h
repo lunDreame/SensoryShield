@@ -109,6 +109,7 @@ class System final {
     ControlTarget mAppliedTarget = {};
     ControlMode mMode = ControlMode::Auto;
     int64_t mOverrideDeadlineMs = 0;
+    uint32_t mLastOutputAttemptMs = 0;
     bool mReady = false;
     bool mFactoryResetRequested = false;
     bool mMatterChildEnabled[4] = {true, true, true, true};

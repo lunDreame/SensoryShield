@@ -10,7 +10,7 @@ int main() {
     assert(c.preferredBrightness==60 && c.minBrightness==30 && c.maxBrightness==80);
     assert(c.normalCCTMireds==250 && c.preferredCCTMireds==417);
     assert(c.preferredFanPercent==60 && c.reliefFanPercent==20);
-    assert(c.reliefHoldMs==3000 && c.recoverConfirmMs==2500 && !c.occupancyAutomationEnabled);
+    assert(c.reliefHoldMs==3000 && c.recoverConfirmMs==3000 && !c.occupancyAutomationEnabled);
     a.Initialize(c);
     int brightness=60,cct=250,fan=60; uint32_t elapsed=0;
     float extraLux=0,extraSound=0;

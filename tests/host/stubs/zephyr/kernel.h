@@ -39,3 +39,8 @@ inline bool host_run_delayable(k_work_delayable* work) {
     if (!work->pending || work->work.handler == nullptr) return false;
     work->pending = false; work->work.handler(&work->work); return true;
 }
+
+inline int64_t k_uptime_get() { return testUptimeMs; }
+#define K_NO_WAIT 0
+inline void k_work_init(k_work* work, void (*handler)(k_work*)) { work->handler=handler; }
+inline int k_work_submit(k_work* work) { if(work->handler) work->handler(work); return 1; }

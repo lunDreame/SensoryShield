@@ -40,7 +40,7 @@ int main() {
         r.s.controlInputsSettled=false;
         for(int i=0;i<80;++i) { auto t=r.tick(0); assert(t.brightnessPercent==30 && t.fanPercent==20); }
         r.s.controlInputsSettled=true;
-        for(int i=0;i<11;++i) { auto t=r.tick(0); assert(t.brightnessPercent==30 && t.fanPercent==20); }
+        for(uint32_t i=0;i<=r.c.recoverConfirmMs/ALGORITHM_PERIOD_MS;++i) { auto t=r.tick(0); assert(t.brightnessPercent==30 && t.fanPercent==20); }
         r.tick(0); auto t=r.tick(0); assert(t.brightnessPercent==32 && t.fanPercent==22);
         // The middle band pauses both with one recovery clock.
         for(int i=0;i<40;++i) { auto h=r.tick(1); assert(h.brightnessPercent==t.brightnessPercent && h.fanPercent==t.fanPercent && h.cctMireds==t.cctMireds); }

@@ -6,7 +6,7 @@
 // but do not subtract the achieved reduction from the measured environment.
 class OutputAwareSignal {
   public:
-    static constexpr uint32_t SettleMs = 500; // Engineering setting, verify on the installed board.
+    static constexpr uint32_t SettleMs = 500; // 공통 출력 안정화 공학값. 시연 단축값이 아니며 보드에서 검증한다.
     struct Result { float value; bool valid, learn; };
     void Reset() { *this = {}; }
     Result Observe(float raw, uint64_t output, uint32_t now, bool settled, bool valid) {

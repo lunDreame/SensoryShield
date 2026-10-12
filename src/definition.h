@@ -11,11 +11,11 @@
 #define CONFIG_VERSION 0x00090000
 #define ENVIRONMENT_SAMPLE_CAPACITY 31
 
+// 공통 센서·제어 주기: 시연을 위해 단축한 값이 아니다.
 #define SENSOR_PERIOD_MS 200
 #define ALGORITHM_PERIOD_MS 250
 #define WEB_TELEMETRY_MS 500
 #define ACTUATOR_RAMP_MS 25
-#define AUTO_OCCUPANCY_HOLD_MS (30 * 1000)
 
 #define ZMS_ID_APP_CONFIG 0x1001
 #define ZMS_ID_DEVICE_TABLE 0x1002
@@ -24,18 +24,39 @@
 
 #define MAX_CHILD_DEVICES 8
 #define LOG_STATE_CHANGES_ONLY 1
+// 공통 실제 모터 구동 제약: 시연 타이머와 별개이며 보드에서 검증한다.
 #define FAN_START_BOOST_MS 350
 #define FAN_MIN_DUTY_PERCENT 18
 #define AUTO_FAN_QUIET_PERCENT 20
 #define AUTO_FAN_NORMAL_PERCENT 60
-#define AUTO_RELIEF_HOLD_MS 3000 // Demo default; real-use hold is guardian configurable.
-#define MAX_RELIEF_HOLD_MS (60 * 60 * 1000)
-#define AUTO_RECOVER_CONFIRM_MS 2500
+// 시연용 시작 설정. SENSORYSHIELD_DEMO_DEFAULTS=0 빌드는 실사용 시작 예시를 사용한다.
+// 저장된 보호자 설정이 우선하며, 펌웨어 업데이트로 기존 설정을 덮어쓰지 않는다.
+#ifndef SENSORYSHIELD_DEMO_DEFAULTS
+#define SENSORYSHIELD_DEMO_DEFAULTS 1
+#endif
+#if SENSORYSHIELD_DEMO_DEFAULTS
+#define AUTO_RELIEF_HOLD_MS 3000          // 시연: 완화 최소 유지 3초.
+// #define AUTO_RELIEF_HOLD_MS (30 * 60 * 1000) // 실사용 시작 예시: 30분, 보호자가 변경 가능.
+#define AUTO_RECOVER_CONFIRM_MS 3000      // 시연·실사용 공통: 낮은 점수를 3초 확인한 뒤 점진 복귀.
+// #define AUTO_RECOVER_CONFIRM_MS 3000  // 실사용 시작 설정도 복귀 확인 3초.
+// 변경 전 기록: AUTO_RECOVER_CONFIRM_MS 2500. 현재 기본값은 아니다.
+#define AUTO_OCCUPANCY_HOLD_MS (30 * 1000) // 시연: 재실 자동화를 켰을 때 미감지 유지 30초.
+// #define AUTO_OCCUPANCY_HOLD_MS (15 * 60 * 1000) // 실사용 시작 예시: 15분, 보호자가 변경 가능.
+#else
+// 실사용 시작 예시/기존 공학 설정. 임상적으로 검증된 진정·재실 시간은 아니다.
+// 최소 유지와 복귀 확인은 별개이며, 설치 환경과 사용자 평가로 조정한다.
+#define AUTO_RELIEF_HOLD_MS (30 * 60 * 1000)
+#define AUTO_RECOVER_CONFIRM_MS 3000 // 실사용 시작 설정: 복귀 확인 3초.
+#define AUTO_OCCUPANCY_HOLD_MS (15 * 60 * 1000)
+#endif
+#define MAX_RELIEF_HOLD_MS (60 * 60 * 1000) // 두 프로필 공통 설정 상한.
+#define MAX_OCCUPANCY_HOLD_MS (60 * 60 * 1000)
 #define STIMULUS_MAX_SCORE 4.0f
-#define OVERRIDE_DURATION_MS 900000
+#define OVERRIDE_DURATION_MS 900000 // 공통 수동 유지 15분. 시연은 AUTO 전환으로 종료한다.
 
 struct AppConfig {
     uint32_t version = CONFIG_VERSION;
+    // 공통 초기 민감도·출력 범위. 시연 전용으로 바꾼 값이 아니며 보호자가 변경한다.
     float lightWeight = 0.55f;
     float soundWeight = 0.45f;
     uint8_t minBrightness = 30;
@@ -53,7 +74,7 @@ struct AppConfig {
     uint8_t reliefFanPercent = AUTO_FAN_QUIET_PERCENT;
     uint32_t reliefHoldMs = AUTO_RELIEF_HOLD_MS;
     uint32_t recoverConfirmMs = AUTO_RECOVER_CONFIRM_MS;
-    bool occupancyAutomationEnabled = false; // Enable explicitly for the occupancy demo.
+    bool occupancyAutomationEnabled = false; // 공통 기본 꺼짐. 재실 시연 순서에서만 켠다.
 };
 
 struct ChildDeviceDescriptor {

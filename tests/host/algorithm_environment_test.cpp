@@ -32,11 +32,11 @@ void sharedSoundPolicy() {
     assert(target.fanPercent == 20);
     for (int i = 0; i < 30; ++i) tick(100, .015f); // Between enter/recover: keep relief.
     assert(target.brightnessPercent < 100 && target.fanPercent == 20);
-    for (int i = 0; i < 10; ++i) {
+    for (uint32_t i = 0; i < c.recoverConfirmMs / ALGORITHM_PERIOD_MS; ++i) {
         tick(100, .01f);
         assert(target.fanPercent == 20);
     }
-    tick(100, .01f); // After 2.5 s below recovery threshold, fan starts rising.
+    tick(100, .01f); // The configured continuous-low confirmation begins recovery.
     assert(target.fanPercent == 20); // Recovery starts; first output step follows 500 ms.
     for (int i = 0; i < 200; ++i) tick(100, .01f);
     assert(target.brightnessPercent == 100 && target.fanPercent == 60);

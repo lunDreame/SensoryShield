@@ -1,34 +1,4 @@
-#include "system/memory.h"
-#include <zephyr/settings/settings.h>
-#include <cassert>
-#include <cstring>
-#include <cerrno>
-#include <map>
-#include <string>
-#include <vector>
-#include <cstdio>
-
-static std::map<std::string, std::vector<unsigned char>> storage;
-static bool failSave = false;
-int settings_subsys_init() { return 0; }
-static ssize_t Read(void* source, void* target, size_t length) {
-    auto& bytes = *static_cast<std::vector<unsigned char>*>(source);
-    memcpy(target, bytes.data(), length);
-    return length;
-}
-int settings_load_subtree_direct(const char* key, settings_load_direct_cb cb, void* param) {
-    auto found = storage.find(key);
-    if (found == storage.end()) return 0;
-    const int ret = cb(nullptr, found->second.size(), Read, &found->second, param);
-    return ret < 0 ? ret : 0;
-}
-int settings_save_one(const char* key, const void* data, size_t length) {
-    if (failSave) return -EIO;
-    const auto* bytes = static_cast<const unsigned char*>(data);
-    storage[key] = {bytes, bytes + length};
-    return 0;
-}
-int settings_delete(const char* key) { return storage.erase(key) ? 0 : -ENOENT; }
+#include "settings_fixture.h"
 struct LegacyConfig {
     uint32_t version; float lightWeight, soundWeight;
     uint8_t minBrightness, maxBrightness;
@@ -134,14 +104,14 @@ int main() {
     assert(memory.Config().preferredFanPercent == 60 && memory.InitialBaseline().Valid());
     assert(memory.Config().preferredBrightness == 60);
     assert(memory.Config().normalCCTMireds == memory.Config().minCCTMireds);
-    assert(memory.Config().reliefFanPercent == 20 && memory.Config().reliefHoldMs == AUTO_RELIEF_HOLD_MS && memory.Config().recoverConfirmMs == 2500);
+    assert(memory.Config().reliefFanPercent == 20 && memory.Config().reliefHoldMs == AUTO_RELIEF_HOLD_MS && memory.Config().recoverConfirmMs == AUTO_RECOVER_CONFIRM_MS);
     // v7 retains its chosen outputs and old observation offsets; old padding isn't a new preference.
     oldConfig.version = OUTPUT_CONFIG_VERSION; oldConfig.preferredFanPercent = 40;
     memcpy(oldSetup.config, &oldConfig, 32); oldSetup.config[30] = 255; oldSetup.config[31] = 255;
     settings_save_one("sensoryshield/app_config", &oldSetup, sizeof(oldSetup)); memory.Initialize();
     assert(memory.Config().preferredBrightness == 60 && memory.Config().preferredFanPercent == 40);
     assert(memory.Config().normalCCTMireds == oldConfig.minCCTMireds && memory.InitialBaseline().lux[30] == 130);
-    assert(memory.Config().reliefFanPercent == 20 && memory.Config().recoverConfirmMs == 2500);
+    assert(memory.Config().reliefFanPercent == 20 && memory.Config().recoverConfirmMs == AUTO_RECOVER_CONFIRM_MS);
     // v8 had a 44-byte config. New defaults must not consume bytes from initial observations.
     struct SetupV8 { unsigned char config[44]; InitialEnvironment initial; } v8{};
     auto oldV8=memory.Config(); oldV8.version=RELIEF_CONFIG_VERSION;

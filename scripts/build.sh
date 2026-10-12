@@ -4,6 +4,9 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
+# 기본 빌드: 시연용 유지/복귀 확인 3초. 실사용 시작 예시 빌드:
+# SENSORYSHIELD_DEMO_DEFAULTS=OFF bash scripts/build.sh
+# 구체적인 기존 값/실사용 후보는 src/definition.h의 주석과 #else에 보존한다.
 NCS_ROOT="${NCS_ROOT:-/opt/nordic/ncs/v3.4.0}"
 TOOLCHAIN_DIR="${TOOLCHAIN_DIR:-/opt/nordic/ncs/toolchains/ccc010f809}"
 BUILD_DIR="${BUILD_DIR:-${APP_DIR}/build}"
@@ -30,10 +33,12 @@ echo "NCS_ROOT=${NCS_ROOT}"
 echo "APP_DIR=${APP_DIR}"
 echo "BUILD_DIR=${BUILD_DIR}"
 echo "BOARD=${BOARD}"
+echo "SENSORYSHIELD_DEMO_DEFAULTS=${SENSORYSHIELD_DEMO_DEFAULTS:-ON}"
+cmake_args=(-DSENSORYSHIELD_DEMO_DEFAULTS="${SENSORYSHIELD_DEMO_DEFAULTS:-ON}")
 
 cd "${NCS_ROOT}"
 if [[ "${pristine}" == true ]]; then
-    "${WEST}" build -b "${BOARD}" "${APP_DIR}" -d "${BUILD_DIR}" --pristine
+    "${WEST}" build -b "${BOARD}" "${APP_DIR}" -d "${BUILD_DIR}" --pristine -- "${cmake_args[@]}"
 else
-    "${WEST}" build -b "${BOARD}" "${APP_DIR}" -d "${BUILD_DIR}"
+    "${WEST}" build -b "${BOARD}" "${APP_DIR}" -d "${BUILD_DIR}" -- "${cmake_args[@]}"
 fi

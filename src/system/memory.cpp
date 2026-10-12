@@ -74,6 +74,7 @@ static AppConfig NormalizeConfig(AppConfig config) {
     if (config.occupancyTimeoutMs < 1000U) {
         config.occupancyTimeoutMs = AUTO_OCCUPANCY_HOLD_MS;
     }
+    config.occupancyTimeoutMs = ClampValue<uint32_t>(config.occupancyTimeoutMs, 1000U, MAX_OCCUPANCY_HOLD_MS);
     return config;
 }
 
