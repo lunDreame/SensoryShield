@@ -22,10 +22,12 @@ Algorithm& Algorithm::Instance() {
 int Algorithm::Initialize(const AppConfig& config) {
     mConfig = config;
     mLightRebasePending = false;
+    mSoundRebasePending = false;
     mStimulusScorer.Reset();
-    mSoundFan.Reset();
     mOutputAware.Reset();
-    mLightPresence.Reset();
+    mObserved = {};
+    mObserved.controlInputsSettled = false;
+    mRelief.Reset();
     mPreviousTarget = {false, config.minBrightness, config.maxCCTMireds, false, 255, 255, 255, false, 0, 0.0f};
     LOG_INF("Algorithm ready");
     return 0;
@@ -36,7 +38,12 @@ void Algorithm::SetConfig(const AppConfig& config) {
     // manual controls and relief-tone edits never take this path into rebasing.
     if (NormalBrightness(config) != NormalBrightness(mConfig) || NormalCct(config) != NormalCct(mConfig)) {
         mLightRebasePending = true;
-        mLightPresence.OnDefaultOutputChanged();
+        mRelief.OnDefaultOutputChanged();
+    }
+    if (NormalizeFanPercent(config.preferredFanPercent, config.fanMaxPercent) !=
+        NormalizeFanPercent(mConfig.preferredFanPercent, mConfig.fanMaxPercent)) {
+        mSoundRebasePending = true;
+        mRelief.OnDefaultOutputChanged();
     }
     mConfig = config;
 }
@@ -44,34 +51,40 @@ void Algorithm::SetConfig(const AppConfig& config) {
 StimulusScore Algorithm::EvaluateEnvironment(const SensorSnapshot& snapshot, bool automaticMode) {
     mObserved = mOutputAware.Observe(snapshot);
     SensorSnapshot learning = mObserved;
-    bool ordinaryOutput = mLightPresence.IsNormal() && mSoundFan.IsNormal();
+    bool ordinaryOutput = mRelief.IsNormal();
     if (snapshot.observedOutputs.valid) {
         const auto& o = snapshot.observedOutputs;
         const uint8_t normalBrightness = ClampValue(mConfig.preferredBrightness, mConfig.minBrightness, mConfig.maxBrightness);
         const uint16_t normalCct = ClampValue(mConfig.normalCCTMireds, mConfig.minCCTMireds, mConfig.maxCCTMireds);
-        const uint8_t normalFan = ClampValue<uint8_t>(mConfig.preferredFanPercent, 0, mConfig.fanMaxPercent);
+        const uint8_t normalFan = NormalizeFanPercent(mConfig.preferredFanPercent, mConfig.fanMaxPercent);
         ordinaryOutput = ordinaryOutput && o.lightOn == (normalBrightness > 0) && o.brightness == normalBrightness &&
             !o.rgb && o.cct == normalCct && o.fanOn == (normalFan > 0) && o.fanPercent == normalFan;
     }
-    // Keep the old baseline until the NEW normal output is actually observed,
-    // fresh and settled in AUTO. An explicit rebase seeds only lux, never sound.
+    // Rebase only the channel whose saved normal output changed, once the new
+    // output is fresh and settled in AUTO. Temporary controls never rebase.
     const bool rebased = mLightRebasePending && automaticMode && ordinaryOutput &&
         snapshot.observedOutputs.valid && mObserved.controlInputsSettled &&
         mObserved.illuminanceValid && mStimulusScorer.RebaseLight(mObserved.lux);
     if (rebased) mLightRebasePending = false;
+    const bool soundRebased = mSoundRebasePending && automaticMode && ordinaryOutput &&
+        snapshot.observedOutputs.valid && mObserved.controlInputsSettled &&
+        mObserved.micValid && mObserved.sound.valid && mStimulusScorer.RebaseSound(mObserved.sound.energy);
+    if (soundRebased) mSoundRebasePending = false;
     learning.learnLight = learning.learnLight && automaticMode && ordinaryOutput;
     learning.learnSound = learning.learnSound && automaticMode && ordinaryOutput;
     // Do not count the seed twice or admit measurements from an earlier output.
     learning.learnLight = learning.learnLight && !mLightRebasePending && !rebased;
+    learning.learnSound = learning.learnSound && !mSoundRebasePending && !soundRebased;
     StimulusScore score = mStimulusScorer.Evaluate(learning, mConfig);
-    if (mLightRebasePending) {
+    if (mLightRebasePending || mSoundRebasePending) {
         score.baselineReady = false;
+        if (mSoundRebasePending) score.soundBaselineReady = false;
         if (automaticMode) {
-            // The old lux reference is not comparable with the newly requested
-            // output. Keep sound protection active while applying/recovering to
-            // the new default; otherwise our own light can prevent rebasing.
-            score.light = 0;
-            score.combined = ClampValue(score.sound, 0.0f, STIMULUS_MAX_SCORE);
+            // Preserve the unchanged channel's protection while the old reference
+            // for an explicitly edited output is temporarily incomparable.
+            if (mLightRebasePending) score.light = 0;
+            if (mSoundRebasePending) score.sound = 0;
+            score.combined = ClampValue(score.light + score.sound, 0.0f, STIMULUS_MAX_SCORE);
         }
     }
     return score;
@@ -90,8 +103,7 @@ ControlTarget Algorithm::Evaluate(const SensorSnapshot& snapshot, const Stimulus
 
     ControlTarget target = mPreviousTarget;
     target.sensoryScore = stimulus.combined;
-    const LightTarget light = mLightPresence.Evaluate(effectiveSnapshot, mConfig, stimulus.combined, now);
-    const uint8_t fanPercent = mSoundFan.Evaluate(effectiveSnapshot, mConfig, stimulus, now);
+    const SensoryTarget light = mRelief.Evaluate(effectiveSnapshot, mConfig, stimulus.combined, now);
 
     target.lightOn = light.on;
     target.brightnessPercent = light.brightnessPercent;
@@ -100,8 +112,8 @@ ControlTarget Algorithm::Evaluate(const SensorSnapshot& snapshot, const Stimulus
     target.red = 255;
     target.green = 255;
     target.blue = 255;
-    target.fanPercent = fanPercent;
-    target.fanOn = fanPercent > 0;
+    target.fanPercent = light.fanPercent;
+    target.fanOn = light.fanPercent > 0;
 
     mPreviousTarget = target;
     return target;

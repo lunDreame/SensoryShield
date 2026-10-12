@@ -1,19 +1,23 @@
 // Vite development middleware only. Fixtures illustrate UI states, not firmware predictions.
+// 시연 시간은 펌웨어와 동일: 유지 3초 / 복귀 확인 3초 / 재실 유지 30초.
+// 실사용 시작 예시(응답용 모의값에는 적용하지 않음): reliefHoldMs: 1800000,
+// recoverConfirmMs: 3000(공통 공학 설정·검증 대상), occupancyTimeoutMs: 900000.
 export function mockApi() {
+  const normalizeFan = (requested, cap) => requested <= 0 || cap < 18 ? 0 : Math.min(cap, Math.max(18, requested));
   let scenario = "normal";
   let mode = "AUTO";
   let manualFan = { fanOn: false, fanPercent: 0 };
   let manualLight = { lightOn: true, brightnessPercent: 60, cctMireds: 370, rgbMode: false, red: 255, green: 255, blue: 255 };
   let overrideUntil = 0;
   const started = Date.now();
-  let profile = { lightWeight: 0.55, soundWeight: 0.45, minBrightness: 1, maxBrightness: 100,
-    minCCTMireds: 250, maxCCTMireds: 454, preferredCCTMireds: 333, preferredBrightness: 100, preferredFanPercent: 60, fanMaxPercent: 100, occupancyTimeoutMs: 30000, occupancyAutomationEnabled: true,
-    normalCCTMireds:250, reliefFanPercent:20, reliefHoldMs:1500, recoverConfirmMs:2500, profileConfigured: false };
+  let profile = { lightWeight: 0.55, soundWeight: 0.45, minBrightness: 30, maxBrightness: 80,
+    minCCTMireds: 250, maxCCTMireds: 454, preferredCCTMireds: 417, preferredBrightness: 60, preferredFanPercent: 60, fanMaxPercent: 100, occupancyTimeoutMs: 30000, occupancyAutomationEnabled: false,
+    normalCCTMireds:250, reliefFanPercent:20, reliefHoldMs:3000, recoverConfirmMs:3000, profileConfigured: false };
   let initialEnvironment = null;
   let measurement = {state:"idle",samples:0,requiredSamples:31,luxMedian:0,luxMad:0,soundMedian:0,soundMad:0};
   let measurementStarted = 0;
   let measuredLight = null;
-  const scenarios = ["normal", "warming-up", "noise", "impulse", "mic-error", "vacant", "offline", "command-error"];
+  const scenarios = ["normal", "warming-up", "noise", "impulse", "mic-error", "vacant", "offline", "command-error", "fan-boost", "fan-pwm-error", "fan-settling", "legacy-diagnostics"];
   const panel = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>Mock 시나리오</title>
   <body style="font:18px system-ui;max-width:700px;margin:50px auto;padding:20px"><h1>UI 시험 시나리오</h1>
   <p>실제 장치가 아닌 개발용 응답입니다. 알고리즘 검증은 C++ 시험으로 수행합니다.</p>
@@ -56,9 +60,11 @@ export function mockApi() {
         // The vacant fixture represents an already-expired hold; real timing is covered in C++ tests.
         const autoAbsent = vacant && profile.occupancyAutomationEnabled;
         const impulse = scenario === "impulse" && Math.floor(Date.now()/1500)%4 === 0;
-        const autoCct = noise || impulse ? profile.preferredCCTMireds : profile.normalCCTMireds;
+        const autoCct = noise ? profile.preferredCCTMireds : profile.normalCCTMireds;
         const autoBrightness = autoAbsent ? 0 : noise ? Math.round(profile.preferredBrightness - (profile.preferredBrightness - profile.minBrightness) * .75) : profile.preferredBrightness;
-        const autoSpeed = autoAbsent || profile.fanMaxPercent === 0 ? 0 : Math.min(profile.fanMaxPercent, noise || micError ? Math.min(profile.reliefFanPercent, profile.preferredFanPercent) : profile.preferredFanPercent);
+        const normalFan = normalizeFan(profile.preferredFanPercent, profile.fanMaxPercent);
+        const reliefFan = normalizeFan(profile.reliefFanPercent, profile.fanMaxPercent);
+        const autoSpeed = autoAbsent ? 0 : noise || micError ? Math.min(normalFan, reliefFan) : normalFan;
         if (measurement.state === "collecting") {
           if (Date.now() - measurementStarted >= 15000 && micError) measurement.state = "error";
           else if (!micError) {
@@ -86,6 +92,7 @@ export function mockApi() {
         if (path === "/api/profile") {
           if (req.method === "POST") {
             const next = {...profile, ...body};
+            if (!Number.isInteger(next.occupancyTimeoutMs) || next.occupancyTimeoutMs < 1000 || next.occupancyTimeoutMs > 3600000) {send(400,{ok:false});return;}
             if (typeof next.occupancyAutomationEnabled !== "boolean") {send(400,{ok:false}); return;}
             if (!Number.isInteger(next.preferredCCTMireds) || next.preferredCCTMireds < next.minCCTMireds || next.preferredCCTMireds > next.maxCCTMireds) {
               send(400, {ok:false}); return;
@@ -98,9 +105,9 @@ export function mockApi() {
             }
             if (!Number.isInteger(next.normalCCTMireds) || next.normalCCTMireds < next.minCCTMireds || next.normalCCTMireds > next.maxCCTMireds ||
                 !Number.isInteger(next.reliefFanPercent) || next.reliefFanPercent < 0 || next.reliefFanPercent > 100 || (next.reliefFanPercent > 0 && next.reliefFanPercent < 18) ||
-                !Number.isInteger(next.reliefHoldMs) || next.reliefHoldMs < 0 || next.reliefHoldMs > 600000 ||
+                !Number.isInteger(next.reliefHoldMs) || next.reliefHoldMs < 0 || next.reliefHoldMs > 3600000 ||
                 !Number.isInteger(next.recoverConfirmMs) || next.recoverConfirmMs < 250 || next.recoverConfirmMs > 60000) {send(400,{ok:false}); return;}
-            next.preferredFanPercent = Math.min(next.fanMaxPercent, next.preferredFanPercent);
+            next.preferredFanPercent = normalizeFan(next.preferredFanPercent, next.fanMaxPercent);
             if (body.useMeasuredEnvironment) { send(400,{ok:false}); return; }
             delete next.useMeasuredEnvironment;
             profile = next;
@@ -118,7 +125,7 @@ export function mockApi() {
           if (mode !== "MANUAL" && mode !== "OVERRIDE") {
             manualLight={lightOn:!autoAbsent && profile.preferredBrightness > 0,brightnessPercent:autoBrightness,cctMireds:autoCct,rgbMode:false,red:255,green:255,blue:255};
           }
-          const speed = Math.min(profile.fanMaxPercent, Math.max(0,body.speed));
+          const speed = normalizeFan(Math.max(0, body.speed), profile.fanMaxPercent);
           manualFan={fanOn:body.power && speed>0,fanPercent:body.power ? speed : 0};
           mode="MANUAL";send(200,{ok:true});return;
         }
@@ -142,7 +149,14 @@ export function mockApi() {
             matter:{commissioned:false,fabricCount:0,threadAttached:false},storage:{appConfig:true,deviceTable:true}}
         };
         if(path === "/api/status") send(200,status);
-        else if(path === "/api/diagnostics") send(200,{...status.system,profile});
+        else if(path === "/api/diagnostics") {
+          const targetPercent = status.outputs.fanOn ? status.outputs.fanPercent : 0;
+          const fan = scenario === "fan-boost" ? {targetPercent,appliedDutyPercent:100,boosting:true,outputValid:true,lastError:0,changedAgoMs:100,stabilizationWaiting:true,controlInputsSettled:false} :
+            scenario === "fan-pwm-error" ? {targetPercent,appliedDutyPercent:100,boosting:false,outputValid:false,lastError:-5,changedAgoMs:700,stabilizationWaiting:true,controlInputsSettled:false} :
+            scenario === "fan-settling" ? {targetPercent,appliedDutyPercent:targetPercent,boosting:false,outputValid:true,lastError:0,changedAgoMs:200,stabilizationWaiting:true,controlInputsSettled:false} :
+            {targetPercent,appliedDutyPercent:targetPercent,boosting:false,outputValid:true,lastError:0,changedAgoMs:800,stabilizationWaiting:false,controlInputsSettled:true};
+          send(200,scenario === "legacy-diagnostics" ? {...status.system,profile} : {...status.system,profile,fan});
+        }
         else send(404,{ok:false});
       });
     }

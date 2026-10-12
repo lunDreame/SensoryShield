@@ -68,7 +68,7 @@ await applyChildComfort('LOUD', api);
 assert.equal((await api.getStatus()).outputs.fanOn, false); // Stop below minimum motor duty.
 assert.equal((await api.getStatus()).outputs.lightOn, false);
 await applyChildComfort('DARK', api);
-assert.equal((await api.getStatus()).outputs.brightnessPercent, 10);
+assert.equal((await api.getStatus()).outputs.brightnessPercent, stored.minBrightness);
 
 await request('/api/profile', { ...stored, minBrightness: 20, maxBrightness: 50, preferredBrightness: 40, fanMaxPercent: 30, preferredFanPercent: 20 });
 await request('/api/light', { power: true, brightness: 25, cct: 333 });
@@ -86,6 +86,11 @@ await request('/api/fan', { power: false, speed: 0 });
 commands.length = 0;
 assert.match(await applyChildComfort('QUIET', api), /팬을 꺼두도록/);
 assert.equal(commands.length, 0);
+await request('/api/profile', { fanMaxPercent: 10, preferredFanPercent: 10 });
+await request('/api/fan', { power: false, speed: 0 });
+commands.length = 0;
+assert.match(await applyChildComfort('QUIET', api), /팬을 꺼두도록/);
+assert.equal(commands.length, 0); // A cap below the motor minimum never becomes an 18% request.
 // Previously lower manual output must never increase on a too-bright request.
 await request('/api/light', { power: true, brightness: 10, cct: 333 });
 await applyChildComfort('BRIGHT', api);

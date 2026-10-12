@@ -53,6 +53,7 @@ class System final {
         return mode;
     }
     uint32_t OverrideRemainingSeconds() const;
+    FanDiagnostics GetFanDiagnostics() const;
     bool Ready() const {
         k_mutex_lock(&mLock, K_FOREVER);
         const bool ready = mReady;
@@ -108,6 +109,7 @@ class System final {
     ControlTarget mAppliedTarget = {};
     ControlMode mMode = ControlMode::Auto;
     int64_t mOverrideDeadlineMs = 0;
+    uint32_t mLastOutputAttemptMs = 0;
     bool mReady = false;
     bool mFactoryResetRequested = false;
     bool mMatterChildEnabled[4] = {true, true, true, true};

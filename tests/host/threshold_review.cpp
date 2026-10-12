@@ -1,6 +1,6 @@
 #include "common/algorithm/stimulus_score.h"
-#include "common/algorithm/light_presence.h"
-#include "common/algorithm/sound_fan.h"
+#include "common/algorithm/sensory_relief.h"
+#include "fan_probe.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -26,9 +26,9 @@ Entry LightEntry(float gain, bool soundOnly) {
         const float delta = n * resolution;
         AppConfig c;
         if (soundOnly) c.soundWeight = gain; else c.lightWeight = gain;
-        StimulusScorer scorer; LightPresenceController light;
+        StimulusScorer scorer; SensoryReliefController light;
         Warm(scorer, c);
-        for (uint32_t now = 0; now <= LightPresenceController::EnterMs; now += ALGORITHM_PERIOD_MS) {
+        for (uint32_t now = 0; now <= SensoryReliefController::EnterMs; now += ALGORITHM_PERIOD_MS) {
             auto s = Sample(soundOnly ? 100 : 100 + delta, soundOnly ? .01f + delta : .01f, now);
             auto target = light.Evaluate(s, c, scorer.Evaluate(s, c).combined, now);
             if (target.brightnessPercent < c.preferredBrightness) return {delta, target.brightnessPercent};
@@ -41,9 +41,9 @@ float FanEntry(float gain) {
     for (int n = 1; n <= 1000; ++n) {
         const float delta = n * .0001f;
         AppConfig c; c.soundWeight = gain;
-        SoundFanController fan; StimulusScorer scorer;
+        FanProbe fan; StimulusScorer scorer;
         for (uint32_t now = 0; now < 25000; now += ALGORITHM_PERIOD_MS) fan.Evaluate(Sample(100, .01f, now), c, scorer.Evaluate(Sample(100, .01f, now), c), now);
-        for (uint32_t now = 25000; now <= 25000 + SoundFanController::EnterQuietMs; now += ALGORITHM_PERIOD_MS) {
+        for (uint32_t now = 25000; now <= 25000 + FanProbe::EnterQuietMs; now += ALGORITHM_PERIOD_MS) {
             if (fan.Evaluate(Sample(100, .01f + delta, now), c, scorer.Evaluate(Sample(100, .01f + delta, now), c), now) < c.preferredFanPercent) return delta;
         }
     }
@@ -85,7 +85,7 @@ int main() {
     float blockedScore = 0;
     for (int i = 0; i < 240; ++i) blockedScore = boundary.Evaluate(Sample(104), c).combined;
     assert(boundary.LightBaselineMedian() == 100 && fabsf(blockedScore - 1.1f) < .001f);
-    for (const auto& entry : lightEntries) assert(entry.targetBrightness == 98);
+    for (const auto& entry : lightEntries) assert(entry.targetBrightness == c.preferredBrightness - 2);
 
     puts("{");
     puts("  \"kind\": \"synthetic_characterization_of_current_production_policies\",");

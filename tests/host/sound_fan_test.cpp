@@ -1,12 +1,13 @@
-#include "common/algorithm/sound_fan.h"
+#include "fan_probe.h"
 #include <cassert>
 #include <cstdio>
 #include <limits>
 
 struct Rig {
-    SoundFanController controller;
+    FanProbe controller;
     StimulusScorer scorer;
     AppConfig config;
+    Rig() { config.occupancyAutomationEnabled=true; config.reliefHoldMs=1500; }
     SensorSnapshot snapshot = {100, {0.01f, 0.02f, 0, 0, true}, true, 0, true, true, true};
     uint32_t now = 0;
     uint8_t evaluate() {
@@ -29,7 +30,7 @@ int main() {
         for (int i=0; i<60; ++i) r.tick(0.15f);
         assert(r.tick(0.15f) == AUTO_FAN_QUIET_PERCENT); // Sustained sound cannot disappear into baseline.
         for (int i=0; i<10; ++i) assert(r.tick() == AUTO_FAN_QUIET_PERCENT);
-        for (int i=0; i<40; ++i) r.tick();
+        for (uint32_t i=0; i<r.config.recoverConfirmMs/ALGORITHM_PERIOD_MS+40; ++i) r.tick();
         assert(r.tick() == AUTO_FAN_NORMAL_PERCENT);
     }
     {
@@ -41,7 +42,8 @@ int main() {
     }
     {
         Rig r; r.warm(); r.config.fanMaxPercent=20; assert(r.tick()==20);
-        r.config.fanMaxPercent=10; assert(r.tick()==10);
+        r.config.fanMaxPercent=18; assert(r.tick()==18);
+        r.config.fanMaxPercent=10; assert(r.tick()==0);
         r.config.fanMaxPercent=0; assert(r.tick()==0);
         r.config.fanMaxPercent=80; r.warm();
         r.snapshot.micValid=false; assert(r.tick()==AUTO_FAN_QUIET_PERCENT);
@@ -49,6 +51,13 @@ int main() {
         r.now+=2000; assert(r.evaluate()==AUTO_FAN_QUIET_PERCENT);
         r.snapshot.sound.energy=std::numeric_limits<float>::quiet_NaN();
         assert(r.evaluate()==AUTO_FAN_QUIET_PERCENT);
+    }
+    {
+        Rig r; r.warm(); r.snapshot.controlInputsSettled=false;
+        for(int i=0;i<20;++i) assert(r.tick(.15f)==AUTO_FAN_NORMAL_PERCENT);
+        r.snapshot.controlInputsSettled=true;
+        for(int i=0;i<3;++i) assert(r.tick(.15f)==AUTO_FAN_NORMAL_PERCENT);
+        assert(r.tick(.15f)<AUTO_FAN_NORMAL_PERCENT); // Boost/error/settling time cannot confirm entry.
     }
     {
         Rig r; r.warm();
@@ -78,9 +87,9 @@ int main() {
         assert(r.tick(.15f)==20);
         for(int i=0;i<40;++i) r.tick();
         assert(r.tick()==40); // Recovery returns to the chosen speed, not the old constant 60.
-        r.config.preferredFanPercent=10; r.warm(); assert(r.tick()==10);
-        for(int i=0;i<40;++i) assert(r.tick(.15f)<=10); // Quiet output cannot exceed the preference.
-        r.snapshot.micValid=false; assert(r.tick()<=10);
+        r.config.preferredFanPercent=10; r.warm(); assert(r.tick()==18);
+        for(int i=0;i<40;++i) assert(r.tick(.15f)<=18); // Minimum duty is normalized once the cap permits it.
+        r.snapshot.micValid=false; assert(r.tick()<=18);
         r.config.preferredFanPercent=0; assert(r.tick()==0);
         r.snapshot.micValid=true; for(int i=0;i<40;++i) assert(r.tick()==0);
     }

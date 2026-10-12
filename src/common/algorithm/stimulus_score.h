@@ -19,6 +19,7 @@ class StimulusScorer final {
   public:
     void Reset();
     bool RebaseLight(float lux);
+    bool RebaseSound(float rms);
     void SeedEnvironment(const InitialEnvironment& initial) { initial.Seed(mLuxBaseline, mSoundBaseline); }
     StimulusScore Evaluate(const SensorSnapshot& snapshot, const AppConfig& config);
     // Read-only diagnostics for host simulations; these do not change learning.

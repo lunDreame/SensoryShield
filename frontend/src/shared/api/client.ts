@@ -1,4 +1,6 @@
-import type { AppConfig, EnvironmentMeasurement, ControlMode, StatusResponse, SystemHealth } from "../types/domain";
+import type { AppConfig, DiagnosticsResponse, EnvironmentMeasurement, ControlMode, StatusResponse, SystemHealth } from "../types/domain";
+
+import { demoTimingDefaults } from "../lib/demo-defaults";
 
 export const initialStatus: StatusResponse = {
   sensor: {
@@ -91,6 +93,10 @@ export async function getStatus(): Promise<StatusResponse> {
   return normalizeStatus(await request<RawStatusResponse>("/api/status", undefined, 5000));
 }
 
+export function getDiagnostics(): Promise<DiagnosticsResponse> {
+  return request("/api/diagnostics", undefined, 5000);
+}
+
 export function setMode(mode: ControlMode, durationMinutes = 15): Promise<{ ok: boolean }> {
   return request("/api/mode", {
     method: "POST",
@@ -130,7 +136,9 @@ export function saveProfile(config: AppConfig, useMeasuredEnvironment = false): 
 export async function getProfile(): Promise<AppConfig> {
   const config = await request<AppConfig>("/api/profile");
   // Older firmware did not return a preferred tone. Preserve its allowed range.
-  return { ...config, occupancyAutomationEnabled: config.occupancyAutomationEnabled ?? true, normalCCTMireds: config.normalCCTMireds ?? config.minCCTMireds, reliefFanPercent: config.reliefFanPercent ?? 20, reliefHoldMs: config.reliefHoldMs ?? 1500, recoverConfirmMs: config.recoverConfirmMs ?? 2500, preferredFanPercent: config.preferredFanPercent ?? Math.min(60, config.fanMaxPercent), preferredBrightness: config.preferredBrightness ?? config.maxBrightness, preferredCCTMireds: config.preferredCCTMireds ??
+  // 누락된 시간 필드만 시연 기본값으로 채운다. 반환된 저장 설정은 변경하지 않는다.
+  // 변경 전 누락 필드 기본값: reliefHoldMs: 1500, recoverConfirmMs: 2500.
+  return { ...config, occupancyAutomationEnabled: config.occupancyAutomationEnabled ?? true, normalCCTMireds: config.normalCCTMireds ?? config.minCCTMireds, reliefFanPercent: config.reliefFanPercent ?? 20, reliefHoldMs: config.reliefHoldMs ?? demoTimingDefaults.reliefHoldMs, recoverConfirmMs: config.recoverConfirmMs ?? demoTimingDefaults.recoverConfirmMs, preferredFanPercent: config.preferredFanPercent ?? Math.min(60, config.fanMaxPercent), preferredBrightness: config.preferredBrightness ?? config.maxBrightness, preferredCCTMireds: config.preferredCCTMireds ??
     Math.round((config.minCCTMireds + config.maxCCTMireds) / 2) };
 }
 

@@ -87,7 +87,7 @@ export function FanControl({ outputs, available, mode }: FanControlProps) {
         </div>
       </div>
       <p className="fan-mode-note">
-        {mode === "AUTO" ? "자동 제어 중 · 지속 소음이 커지면 팬 속도를 낮춥니다." : mode === "OVERRIDE" ? "임시 수동 제어 중 · 직접 조절하면 수동 모드로 바뀝니다." : mode === "MANUAL" ? "수동 제어 중 · 자동 복귀는 아래 작동 방식에서 선택하세요." : "안전 모드 · 자동 또는 수동 모드를 선택하세요."}
+        {mode === "AUTO" ? "자동 제어 중 · 빛과 소리의 합산 변화가 커지면 조명과 팬을 함께 완화합니다." : mode === "OVERRIDE" ? "임시 수동 제어 중 · 직접 조절하면 수동 모드로 바뀝니다." : mode === "MANUAL" ? "수동 제어 중 · 자동 복귀는 아래 작동 방식에서 선택하세요." : "안전 모드 · 자동 또는 수동 모드를 선택하세요."}
       </p>
       <div className="fan-draft">
         <div className="fan-draft-heading">

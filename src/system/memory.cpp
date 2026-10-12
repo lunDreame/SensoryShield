@@ -67,20 +67,21 @@ static AppConfig NormalizeConfig(AppConfig config) {
     config.normalCCTMireds = ClampValue<uint16_t>(config.normalCCTMireds, config.minCCTMireds, config.maxCCTMireds);
     config.reliefFanPercent = ClampValue<uint8_t>(config.reliefFanPercent, 0, 100);
     if (config.reliefFanPercent > 0 && config.reliefFanPercent < FAN_MIN_DUTY_PERCENT) config.reliefFanPercent = FAN_MIN_DUTY_PERCENT;
-    config.reliefHoldMs = ClampValue<uint32_t>(config.reliefHoldMs, 0, 600000);
+    config.reliefHoldMs = ClampValue<uint32_t>(config.reliefHoldMs, 0, MAX_RELIEF_HOLD_MS);
     config.recoverConfirmMs = ClampValue<uint32_t>(config.recoverConfirmMs, 250, 60000);
     config.fanMaxPercent = ClampValue<uint8_t>(config.fanMaxPercent, 0, 100);
-    config.preferredFanPercent = ClampValue<uint8_t>(config.preferredFanPercent, 0, config.fanMaxPercent);
+    config.preferredFanPercent = NormalizeFanPercent(config.preferredFanPercent, config.fanMaxPercent);
     if (config.occupancyTimeoutMs < 1000U) {
         config.occupancyTimeoutMs = AUTO_OCCUPANCY_HOLD_MS;
     }
+    config.occupancyTimeoutMs = ClampValue<uint32_t>(config.occupancyTimeoutMs, 1000U, MAX_OCCUPANCY_HOLD_MS);
     return config;
 }
 
 static ControlTarget NormalizeTarget(ControlTarget target, const AppConfig& config) {
     target.brightnessPercent = ClampValue<uint8_t>(target.brightnessPercent, 0, 100);
     target.cctMireds = ClampValue<uint16_t>(target.cctMireds, config.minCCTMireds, config.maxCCTMireds);
-    target.fanPercent = ClampValue<uint8_t>(target.fanPercent, 0, config.fanMaxPercent);
+    target.fanPercent = NormalizeFanPercent(target.fanPercent, config.fanMaxPercent);
     if (!target.lightOn) {
         target.brightnessPercent = 0;
     } else if (target.brightnessPercent == 0U) {
@@ -134,6 +135,8 @@ int Memory::Initialize() {
                 if (context->setup.config.version != LEGACY_CONFIG_VERSION && context->setup.config.version != PREVIOUS_CONFIG_VERSION) return -EINVAL;
                 context->setup.config.normalCCTMireds = context->setup.config.minCCTMireds;
             } else return -EINVAL;
+            if (context->setup.config.version != CONFIG_VERSION)
+                context->setup.config.occupancyAutomationEnabled = true;
             context->read = true;
             return 0;
         }, &loaded);

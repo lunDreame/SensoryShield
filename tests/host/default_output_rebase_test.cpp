@@ -8,7 +8,7 @@ uint32_t testUptimeMs=1000;
 struct Room {
     Algorithm& a=Algorithm::Instance(); AppConfig c;
     uint32_t elapsed=0;
-    float ambient=100, coupling=.5f, toneCoupling=0, rms=.01f;
+    float ambient=100, coupling=.5f, toneCoupling=0, rms=.01f, fanCoupling=0;
     bool automatic=true, inputValid=true, occupied=true;
     int brightness=40, cct=250, fan=60;
     SensorSnapshot s{}; StimulusScore score{}; ControlTarget target{};
@@ -23,7 +23,7 @@ struct Room {
             testUptimeMs=1000+elapsed;
             if(elapsed%SENSOR_PERIOD_MS==0) {
                 s={ambient+coupling*brightness+toneCoupling*(cct-250),
-                    {rms,rms,0,testUptimeMs,true},occupied,occupied?testUptimeMs:0,
+                    {rms+fanCoupling*fan,rms+fanCoupling*fan,0,testUptimeMs,true},occupied,occupied?testUptimeMs:0,
                     inputValid,true,true};
                 s.observedAtMs=testUptimeMs;
                 s.observedOutputs={true,brightness>0,static_cast<uint8_t>(brightness),static_cast<uint16_t>(cct),
@@ -117,6 +117,17 @@ int main() {
         r.c.preferredBrightness=80; r.save(); r.run(250);
         r.c.preferredBrightness=60; r.save(); r.run(10000);
         assert(!r.a.LightRebasePending() && r.brightness==60 && r.a.LightBaselineMedian()==130);
+    }
+    {
+        // Saving a new normal fan output must not compare its own sound with
+        // the previous fan output forever. Light protection stays independent.
+        Room r; r.fanCoupling=.001f; r.run(10000);
+        assert(std::fabs(r.a.SoundBaselineMedian()-.07f)<.00001f);
+        r.c.preferredFanPercent=80; r.save(); r.run(120000);
+        assert(r.fan==80);
+        assert(std::fabs(r.a.SoundBaselineMedian()-.09f)<.00001f);
+        r.rms+=.03f; r.run(15000);
+        assert(r.fan<80 && std::fabs(r.a.SoundBaselineMedian()-.09f)<.00001f);
     }
     puts("saved default rebasing, stable/new outputs, manual/error/PIR deferral and sound preservation passed");
 }

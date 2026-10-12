@@ -15,7 +15,23 @@ async function request(url, body) {
   return result;
 }
 const profile=(await request('/api/profile')).body;
-assert.equal(profile.preferredCCTMireds,333);
+assert.equal(profile.preferredCCTMireds,417);
+assert.equal(profile.preferredBrightness,60); assert.equal(profile.minBrightness,30); assert.equal(profile.maxBrightness,80);
+assert.equal(profile.reliefHoldMs,3000); assert.equal(profile.recoverConfirmMs,3000);
+assert.equal(profile.occupancyAutomationEnabled,false);
+assert.equal((await request('/api/profile',{reliefHoldMs:1800000})).status,200);
+assert.equal((await request('/api/profile')).body.reliefHoldMs,1800000);
+assert.equal((await request('/api/profile',{reliefHoldMs:3600001})).status,400);
+await request('/api/profile',profile);
+assert.equal((await request('/api/profile',{occupancyTimeoutMs:900000})).status,200);
+assert.equal((await request('/api/profile')).body.occupancyTimeoutMs,900000);
+assert.equal((await request('/api/profile',{occupancyTimeoutMs:3600001})).status,400);
+await request('/api/profile',profile);
+// Transient sound fixture may raise the displayed score, but must not change tone/output.
+await request('/__mock/scenario',{scenario:'impulse'});
+assert.equal((await request('/api/status')).body.outputs.cctMireds,profile.normalCCTMireds);
+assert.equal((await request('/api/status')).body.outputs.fanPercent,profile.preferredFanPercent);
+await request('/__mock/scenario',{scenario:'normal'});
 for (const tone of [250,333,417]) {
   assert.equal((await request('/api/profile',{...profile,preferredCCTMireds:tone})).status,200);
   assert.equal((await request('/api/profile')).body.preferredCCTMireds,tone);
@@ -47,15 +63,18 @@ assert.equal((await request('/api/status')).body.outputs.fanPercent,20);
 await request('/__mock/scenario',{scenario:'mic-error'});
 assert.equal((await request('/api/status')).body.sensor.micValid,false);
 await request('/__mock/scenario',{scenario:'vacant'});
+assert.equal((await request('/api/status')).body.outputs.fanOn,true); // Demo default keeps automatic output without motion.
+await request('/api/profile',{occupancyAutomationEnabled:true});
 assert.equal((await request('/api/status')).body.outputs.fanOn,false);
 await request('/__mock/scenario',{scenario:'command-error'});
 assert.equal((await request('/api/fan',{power:true,speed:40})).status,503);
 await request('/__mock/scenario',{scenario:'offline'});
 assert.equal((await request('/api/status')).status,503);
+assert.equal((await request('/api/diagnostics')).status,503);
 await request('/__mock/scenario',{scenario:'normal'});
 assert.equal((await request('/api/status')).status,200);
 await request('/api/profile',{fanMaxPercent:10});
-assert.equal((await request('/api/status')).body.outputs.fanPercent,10);
+assert.equal((await request('/api/status')).body.outputs.fanPercent,0); // A cap below 18% disables the fan.
 await request('/api/profile',{fanMaxPercent:100});
 assert.equal((await request('/api/profile',{preferredBrightness:101})).status,400);
 // Setup no longer measures or previews outputs. It preserves normal-output settings.
@@ -91,6 +110,19 @@ assert.equal(absent.outputs.lightOn,true); assert.equal(absent.outputs.fanOn,tru
 await request('/api/profile',{lightWeight:.8});
 assert.equal((await request('/api/profile')).body.occupancyAutomationEnabled,false); // omitted retains stored setting
 assert.equal((await request('/api/diagnostics')).body.profile.occupancyAutomationEnabled,false);
+for (const [scenario, expected] of [
+  ['normal', {boosting:false,outputValid:true,stabilizationWaiting:false,controlInputsSettled:true}],
+  ['fan-boost', {boosting:true,outputValid:true,stabilizationWaiting:true,controlInputsSettled:false}],
+  ['fan-pwm-error', {boosting:false,outputValid:false,stabilizationWaiting:true,controlInputsSettled:false,lastError:-5}],
+  ['fan-settling', {boosting:false,outputValid:true,stabilizationWaiting:true,controlInputsSettled:false}]
+]) {
+  await request('/__mock/scenario',{scenario});
+  const fan=(await request('/api/diagnostics')).body.fan;
+  for (const [key,value] of Object.entries(expected)) assert.equal(fan[key],value);
+}
+await request('/__mock/scenario',{scenario:'legacy-diagnostics'});
+assert.equal((await request('/api/diagnostics')).body.fan,undefined); // Older response is information-absent, not normal.
+await request('/__mock/scenario',{scenario:'vacant'});
 for(const value of [0,1,'false',null]) assert.equal((await request('/api/profile',{occupancyAutomationEnabled:value})).status,400);
 await request('/api/profile',{occupancyAutomationEnabled:true});
 assert.equal((await request('/api/status')).body.outputs.lightOn,false);

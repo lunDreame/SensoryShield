@@ -73,14 +73,14 @@ int FanDevice::ApplyTargetNoMatter(bool on, uint8_t speedPercent) {
 
 int FanDevice::ApplyTargetInternal(bool on, uint8_t speedPercent, bool publishMatter) {
     const uint8_t maxPercent = GetMemory()->Config().fanMaxPercent;
-    uint8_t targetPercent = on ? ClampValue<uint8_t>(speedPercent, 0, maxPercent) : 0;
-    if (on && targetPercent == 0U) {
-        targetPercent = maxPercent > 0U ? maxPercent : 100U;
-    }
-    const FanState next = {on, targetPercent};
+    uint8_t requested = on ? speedPercent : 0U;
+    if (on && requested == 0U) requested = maxPercent;
+    const uint8_t targetPercent = NormalizeFanPercent(requested, maxPercent);
+    const FanState next = {targetPercent > 0U, targetPercent};
 
     if (!HasChanged(mCurrentState, next)) {
-        return 0;
+        const auto output = GetFan()->GetOutputState();
+        if (output.valid && output.requestedPercent == next.speedPercent) return 0;
     }
 
     const int ret = GetFan()->SetSpeed(next.speedPercent);

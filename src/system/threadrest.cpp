@@ -200,7 +200,8 @@ bool IsValidProfileRequest(const ProfileRequest& payload) {
            payload.maxBrightness >= payload.minBrightness && payload.maxBrightness <= 100 &&
            payload.minCCTMireds >= 1 && payload.minCCTMireds <= 1000 &&
            payload.maxCCTMireds >= payload.minCCTMireds && payload.maxCCTMireds <= 1000 &&
-           payload.fanMaxPercent >= 0 && payload.fanMaxPercent <= 100 && payload.occupancyTimeoutMs >= 1000;
+           payload.fanMaxPercent >= 0 && payload.fanMaxPercent <= 100 &&
+           payload.occupancyTimeoutMs >= 1000 && payload.occupancyTimeoutMs <= MAX_OCCUPANCY_HOLD_MS;
 }
 
 int ParseFixedToken(const json_obj_token& token, float* value) {
@@ -408,7 +409,7 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
                      (payload.preferredFanPercent < 0 || payload.preferredFanPercent > payload.fanMaxPercent)) ||
                     ((parsed & kNormalCCTField) && (payload.normalCCTMireds < payload.minCCTMireds || payload.normalCCTMireds > payload.maxCCTMireds)) ||
                     ((parsed & kReliefFanField) && (payload.reliefFanPercent < 0 || payload.reliefFanPercent > 100 || (payload.reliefFanPercent > 0 && payload.reliefFanPercent < FAN_MIN_DUTY_PERCENT))) ||
-                    ((parsed & kReliefHoldField) && (payload.reliefHoldMs < 0 || payload.reliefHoldMs > 600000)) ||
+                    ((parsed & kReliefHoldField) && (payload.reliefHoldMs < 0 || payload.reliefHoldMs > MAX_RELIEF_HOLD_MS)) ||
                     ((parsed & kRecoverConfirmField) && (payload.recoverConfirmMs < 250 || payload.recoverConfirmMs > 60000))) {
                     ret = -EINVAL;
                 } else {
@@ -667,6 +668,7 @@ int ThreadRest::BuildDiagnosticsJson(char* buffer, size_t bufferSize) const {
     }
 
     const SensorSnapshot snapshot = GetSystem()->Snapshot();
+    const FanDiagnostics fan = GetSystem()->GetFanDiagnostics();
     const AppConfig config = GetMemory()->Config();
     char lightWeight[16];
     char soundWeight[16];
@@ -684,13 +686,19 @@ int ThreadRest::BuildDiagnosticsJson(char* buffer, size_t bufferSize) const {
                  "{\"firmware\":\"%s\",\"uptimeSeconds\":%u,\"storage\":{\"appConfig\":true,"
                  "\"deviceTable\":true},\"sensors\":{\"illuminance\":%s,\"mic\":%s,\"pir\":%s},"
                  "\"matter\":{\"commissioned\":%s,\"fabricCount\":%u,\"threadAttached\":%s},"
+                 "\"fan\":{\"targetPercent\":%u,\"appliedDutyPercent\":%u,\"boosting\":%s,"
+                 "\"outputValid\":%s,\"lastError\":%d,\"changedAgoMs\":%u,"
+                 "\"stabilizationWaiting\":%s,\"controlInputsSettled\":%s},"
                  "\"profile\":{\"lightWeight\":%s,\"soundWeight\":%s,\"minBrightness\":%u,"
                  "\"maxBrightness\":%u,\"minCCTMireds\":%u,\"maxCCTMireds\":%u,"
                  "\"preferredCCTMireds\":%u,\"preferredBrightness\":%u,\"preferredFanPercent\":%u,\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u,\"normalCCTMireds\":%u,\"reliefFanPercent\":%u,\"reliefHoldMs\":%u,\"recoverConfirmMs\":%u,\"occupancyAutomationEnabled\":%s,\"profileConfigured\":%s}}",
                  APP_NAME, k_uptime_get_32() / 1000U, snapshot.illuminanceValid ? "true" : "false",
                  snapshot.micValid ? "true" : "false", snapshot.pirValid ? "true" : "false",
                  GetMatterBridge()->Commissioned() ? "true" : "false", GetMatterBridge()->FabricCount(),
-                 GetMatterBridge()->ThreadAttached() ? "true" : "false", lightWeight, soundWeight,
+                 GetMatterBridge()->ThreadAttached() ? "true" : "false", fan.targetPercent,
+                 fan.appliedDutyPercent, fan.boosting ? "true" : "false", fan.outputValid ? "true" : "false",
+                 fan.lastError, fan.changedAgoMs, fan.stabilizationWaiting ? "true" : "false",
+                 fan.controlInputsSettled ? "true" : "false", lightWeight, soundWeight,
                  config.minBrightness, config.maxBrightness, config.minCCTMireds, config.maxCCTMireds,
                  config.preferredCCTMireds, config.preferredBrightness, config.preferredFanPercent, config.fanMaxPercent, config.occupancyTimeoutMs, config.normalCCTMireds, config.reliefFanPercent, config.reliefHoldMs, config.recoverConfirmMs, config.occupancyAutomationEnabled ? "true" : "false", config.profileConfigured ? "true" : "false");
 

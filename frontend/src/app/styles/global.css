@@ -106,6 +106,7 @@ button:disabled { cursor: wait; opacity: .58; }
 .badge-blue { background: var(--blue-weak); color: var(--blue-ink); }
 .badge-green { background: var(--green-weak); color: #008a58; }
 .badge-red { background: var(--red-weak); color: var(--red); }
+.badge-yellow { background: #fff6df; color: #8a6d2d; }
 .badge-light-on, .badge-fan-on { background: #eaf6f1; color: #3e7b69; }
 .mode-badge { gap: 5px; }
 .mode-badge::before { width: 6px; height: 6px; border-radius: 50%; background: currentColor; content: ""; }

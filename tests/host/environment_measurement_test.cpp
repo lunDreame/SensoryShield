@@ -1,6 +1,6 @@
 #include "common/algorithm/environment_measurement.h"
 #include "common/algorithm/stimulus_score.h"
-#include "common/algorithm/sound_fan.h"
+#include "fan_probe.h"
 #include <cassert>
 #include <cstdio>
 #include <limits>
@@ -42,7 +42,7 @@ int main() {
     input.lux = 101;
     for (int i = 0; i < 31; ++i) scorer.Evaluate(input, config);
     assert(scorer.LightBaselineMedian() == 101);
-    SoundFanController fan;
+    FanProbe fan;
     assert(fan.Evaluate(input, config, scorer.Evaluate(input, config), input.sound.timestampMs) == AUTO_FAN_NORMAL_PERCENT);
     input.sound.timestampMs += ALGORITHM_PERIOD_MS;
     assert(fan.Evaluate(input, config, scorer.Evaluate(input, config), input.sound.timestampMs) > AUTO_FAN_QUIET_PERCENT);
