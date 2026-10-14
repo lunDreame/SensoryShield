@@ -34,41 +34,56 @@
 #ifndef SENSORYSHIELD_DEMO_DEFAULTS
 #define SENSORYSHIELD_DEMO_DEFAULTS 1
 #endif
+// Timed demo targets are presentation settings, not clinical calming criteria.
+#define DEMO_TRANSITION_MS 5000 // Demo AUTO recovery and child-request return ramp.
+#define CHILD_TRANSITION_MS 5000
 #if SENSORYSHIELD_DEMO_DEFAULTS
-#define AUTO_RELIEF_HOLD_MS 3000          // 시연: 완화 최소 유지 3초.
-// #define AUTO_RELIEF_HOLD_MS (30 * 60 * 1000) // 실사용 시작 예시: 30분, 보호자가 변경 가능.
-#define AUTO_RECOVER_CONFIRM_MS 3000      // 시연·실사용 공통: 낮은 점수를 3초 확인한 뒤 점진 복귀.
-// #define AUTO_RECOVER_CONFIRM_MS 3000  // 실사용 시작 설정도 복귀 확인 3초.
-// 변경 전 기록: AUTO_RECOVER_CONFIRM_MS 2500. 현재 기본값은 아니다.
-#define AUTO_OCCUPANCY_HOLD_MS (30 * 1000) // 시연: 재실 자동화를 켰을 때 미감지 유지 30초.
-// #define AUTO_OCCUPANCY_HOLD_MS (15 * 60 * 1000) // 실사용 시작 예시: 15분, 보호자가 변경 가능.
+#define AUTO_RELIEF_HOLD_MS 5000 // Demo: count AFTER both physical outputs arrive.
+// Everyday example: #define AUTO_RELIEF_HOLD_MS (30 * 60 * 1000)
+#define AUTO_RECOVER_CONFIRM_MS 3000 // Also 3 seconds in the everyday profile.
+#define AUTO_OCCUPANCY_HOLD_MS (30 * 1000)
+// Everyday example: #define AUTO_OCCUPANCY_HOLD_MS (15 * 60 * 1000)
+#define CHILD_HOLD_MS 5000
+// Everyday example: #define CHILD_HOLD_MS (30 * 60 * 1000)
+#define DEFAULT_NORMAL_BRIGHTNESS 100
+#define DEFAULT_MAX_BRIGHTNESS 100
+#define DEFAULT_NORMAL_FAN 100
+// Everyday examples:
+// #define DEFAULT_NORMAL_BRIGHTNESS 60
+// #define DEFAULT_MAX_BRIGHTNESS 80
+// #define DEFAULT_NORMAL_FAN 60
 #else
-// 실사용 시작 예시/기존 공학 설정. 임상적으로 검증된 진정·재실 시간은 아니다.
-// 최소 유지와 복귀 확인은 별개이며, 설치 환경과 사용자 평가로 조정한다.
 #define AUTO_RELIEF_HOLD_MS (30 * 60 * 1000)
-#define AUTO_RECOVER_CONFIRM_MS 3000 // 실사용 시작 설정: 복귀 확인 3초.
+#define AUTO_RECOVER_CONFIRM_MS 3000
 #define AUTO_OCCUPANCY_HOLD_MS (15 * 60 * 1000)
+#define CHILD_HOLD_MS (30 * 60 * 1000)
+#define DEFAULT_NORMAL_BRIGHTNESS 60
+#define DEFAULT_MAX_BRIGHTNESS 80
+#define DEFAULT_NORMAL_FAN 60
 #endif
+// Child controls in everyday use move 30 percentage points within guardian limits.
+#define CHILD_OUTPUT_STEP_PERCENT 30
+#define DEFAULT_RELIEF_CCT 454 // Warmest selectable white; nominally about 2,200 K.
 #define MAX_RELIEF_HOLD_MS (60 * 60 * 1000) // 두 프로필 공통 설정 상한.
 #define MAX_OCCUPANCY_HOLD_MS (60 * 60 * 1000)
 #define STIMULUS_MAX_SCORE 4.0f
-#define OVERRIDE_DURATION_MS 900000 // 공통 수동 유지 15분. 시연은 AUTO 전환으로 종료한다.
+#define OVERRIDE_DURATION_MS 900000 // Guardian temporary manual hold; child requests use CHILD_HOLD_MS.
 
 struct AppConfig {
     uint32_t version = CONFIG_VERSION;
-    // 공통 초기 민감도·출력 범위. 시연 전용으로 바꾼 값이 아니며 보호자가 변경한다.
+    // 민감도·출력 범위는 보호자 설정이 우선한다. 프로필별 출력 기본값은 위 매크로를 따른다.
     float lightWeight = 0.55f;
     float soundWeight = 0.45f;
     uint8_t minBrightness = 30;
-    uint8_t maxBrightness = 80;
+    uint8_t maxBrightness = DEFAULT_MAX_BRIGHTNESS;
     uint16_t minCCTMireds = 250;
     uint16_t maxCCTMireds = 454;
     uint8_t fanMaxPercent = 100;
     uint32_t occupancyTimeoutMs = AUTO_OCCUPANCY_HOLD_MS;
     bool profileConfigured = false;
-    uint16_t preferredCCTMireds = 417;
-    uint8_t preferredBrightness = 60;
-    uint8_t preferredFanPercent = AUTO_FAN_NORMAL_PERCENT;
+    uint16_t preferredCCTMireds = DEFAULT_RELIEF_CCT;
+    uint8_t preferredBrightness = DEFAULT_NORMAL_BRIGHTNESS;
+    uint8_t preferredFanPercent = DEFAULT_NORMAL_FAN;
     uint8_t reservedV7Padding[2] = {}; // Keep legacy fields at their original offsets.
     uint16_t normalCCTMireds = 250;
     uint8_t reliefFanPercent = AUTO_FAN_QUIET_PERCENT;
@@ -153,6 +168,8 @@ struct FanDiagnostics {
     bool stabilizationWaiting = true;
     bool controlInputsSettled = false;
 };
+
+enum class ComfortAction : uint8_t { Bright, Dark, Loud, Quiet };
 
 enum class ControlMode : uint8_t {
     Auto = 0,

@@ -60,6 +60,7 @@ int System::Initialize() {
     LOG_INF("Initializing peripherals");
     ret = InitializePeripherals();
     if (ret != 0) {
+        mChildRequest=false;
         mMode = ControlMode::Safe;
         LOG_WRN("Peripheral init incomplete: %d", ret);
     }
@@ -337,6 +338,8 @@ int System::InitializeWorks() {
 
 int System::SetMode(ControlMode mode, uint32_t overrideDurationMs) {
     k_mutex_lock(&mLock, K_FOREVER);
+    const bool wasChild=mChildRequest;
+    mChildRequest=false;
     if (mode != ControlMode::Manual) mMeasurement.Invalidate();
     if (mode == ControlMode::Override) {
         mOverrideDeadlineMs = k_uptime_get() + overrideDurationMs;
@@ -346,7 +349,7 @@ int System::SetMode(ControlMode mode, uint32_t overrideDurationMs) {
     const ControlMode previous = mMode;
     mMode = mode;
     const ControlMode current = mMode;
-    if (previous != current) GetAlgorithm()->ResetAutomaticLight();
+    if (previous != current || wasChild) GetAlgorithm()->ResetAutomaticLight();
     const ControlTarget target = mManualTarget;
     k_mutex_unlock(&mLock);
     OnModeChanged(previous, current);
@@ -356,8 +359,36 @@ int System::SetMode(ControlMode mode, uint32_t overrideDurationMs) {
     return 0;
 }
 
+bool System::BaselineFrozen() const {
+    k_mutex_lock(&mLock,K_FOREVER);
+    const bool frozen=GetAlgorithm()->BaselineFrozen();
+    k_mutex_unlock(&mLock); return frozen;
+}
+
+int System::RequestComfort(ComfortAction action) {
+    k_mutex_lock(&mLock,K_FOREVER);
+    if (!mReady || mMode==ControlMode::Safe) { k_mutex_unlock(&mLock); return -EAGAIN; }
+    ControlTarget current=mAppliedTarget;
+    SyncAppliedTargetFromDevices(current);
+    const auto desired=TimedReliefController::ChildTarget(action,current,GetMemory()->Config());
+    if (!(desired!=current)) { k_mutex_unlock(&mLock); return -EALREADY; }
+    const auto previous=mMode;
+    mMeasurement.Invalidate();
+    GetAlgorithm()->StartChild(current,desired,k_uptime_get_32());
+    mTarget=current; mManualTarget=desired;
+    mChildRequest=true; mMode=ControlMode::Override; mOverrideDeadlineMs=0;
+    k_mutex_unlock(&mLock);
+    OnModeChanged(previous,ControlMode::Override);
+    PersistRuntimeState(ControlMode::Override,desired);
+    return 0;
+}
+
 uint32_t System::OverrideRemainingSeconds() const {
     k_mutex_lock(&mLock, K_FOREVER);
+    if(mChildRequest) {
+        const auto seconds=GetAlgorithm()->ChildRemainingSeconds(k_uptime_get_32());
+        k_mutex_unlock(&mLock); return seconds;
+    }
     const ControlMode mode = mMode;
     const int64_t deadlineMs = mOverrideDeadlineMs;
     k_mutex_unlock(&mLock);
@@ -419,6 +450,7 @@ int System::SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMired
     mManualTarget = next;
     mTarget = next;
     mAppliedTarget = next;
+    mChildRequest=false;
     mMode = ControlMode::Manual;
     mOverrideDeadlineMs = 0;
     if (mode != ControlMode::Manual) GetAlgorithm()->ResetAutomaticLight();
@@ -456,6 +488,7 @@ int System::SetManualFan(bool on, uint8_t speedPercent) {
     mManualTarget = next;
     mTarget = next;
     mAppliedTarget = next;
+    mChildRequest=false;
     mMode = ControlMode::Manual;
     mOverrideDeadlineMs = 0;
     if (mode != ControlMode::Manual) GetAlgorithm()->ResetAutomaticLight();
@@ -475,6 +508,7 @@ int System::StartEnvironmentMeasurement() {
     const ControlMode previous = mMode;
     mManualTarget = mAppliedTarget;
     mTarget = mAppliedTarget;
+    mChildRequest=false;
     mMode = ControlMode::Manual;
     mOverrideDeadlineMs = 0;
     if (previous != ControlMode::Manual) GetAlgorithm()->ResetAutomaticLight();
@@ -496,8 +530,15 @@ int System::UpdateConfig(const AppConfig& config, bool useMeasuredEnvironment) {
     if (useMeasuredEnvironment) return -ENOTSUP; // Onboarding no longer commits raw environment recordings.
     k_mutex_lock(&mLock, K_FOREVER);
     const int ret = GetMemory()->SaveConfig(config);
+    const bool cancelChild=ret==0 && mChildRequest;
+    const auto previous=mMode;
     if (ret == 0) GetAlgorithm()->SetConfig(GetMemory()->Config());
+    if(cancelChild) {
+        mChildRequest=false; mMode=ControlMode::Auto; mOverrideDeadlineMs=0;
+        GetAlgorithm()->ResetAutomaticLight();
+    }
     k_mutex_unlock(&mLock);
+    if(cancelChild) OnModeChanged(previous,ControlMode::Auto);
     return ret;
 }
 
@@ -629,7 +670,7 @@ void System::AlgorithmWork() {
     ControlMode mode = mMode;
     ControlMode previousMode = mMode;
     bool modeChanged = false;
-    if (mode == ControlMode::Override && k_uptime_get() >= mOverrideDeadlineMs) {
+    if (mode == ControlMode::Override && !mChildRequest && k_uptime_get() >= mOverrideDeadlineMs) {
         mMode = ControlMode::Auto;
         mOverrideDeadlineMs = 0;
         mode = mMode;
@@ -642,7 +683,13 @@ void System::AlgorithmWork() {
     // Keep scoring in every mode. Manual/override/safe input never updates the ordinary baseline.
     const StimulusScore stimulus = GetAlgorithm()->EvaluateEnvironment(snapshot, mode == ControlMode::Auto);
     ControlTarget nextTarget = {};
-    if (mode == ControlMode::Auto) {
+    if (mChildRequest && GetAlgorithm()->ChildHoldComplete(k_uptime_get_32())) {
+        mChildRequest=false; mMode=mode=ControlMode::Auto; modeChanged=true;
+        mOverrideDeadlineMs=0; // Preserve the low-score confirmation collected during the hold.
+    }
+    if (mChildRequest) {
+        nextTarget=GetAlgorithm()->EvaluateChild(snapshot,stimulus);
+    } else if (mode == ControlMode::Auto) {
         nextTarget = GetAlgorithm()->Evaluate(snapshot, stimulus);
     } else if (mode == ControlMode::Manual || mode == ControlMode::Override) {
         nextTarget = manualTarget;
@@ -751,6 +798,7 @@ int System::ApplyTarget(const ControlTarget& target) {
 
 void System::SetSafeState() {
     k_mutex_lock(&mLock, K_FOREVER);
+    mChildRequest=false;
     mMode = ControlMode::Safe;
     mOverrideDeadlineMs = 0;
     GetAlgorithm()->ResetAutomaticLight();

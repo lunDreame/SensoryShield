@@ -16,6 +16,8 @@ class System final {
     int SetManualLight(bool on, uint8_t brightnessPercent, uint16_t cctMireds, bool rgbMode, uint8_t red,
                        uint8_t green, uint8_t blue);
     int SetManualFan(bool on, uint8_t speedPercent);
+    int RequestComfort(ComfortAction action);
+    bool BaselineFrozen() const;
     int UpdateConfig(const AppConfig& config, bool useMeasuredEnvironment = false);
     int StartEnvironmentMeasurement();
     void CancelEnvironmentMeasurement();
@@ -105,6 +107,7 @@ class System final {
     EnvironmentMeasurement mMeasurement;
     ControlTarget mTarget = {};
     bool mEnvironmentBaselineReady = false;
+    bool mChildRequest = false;
     ControlTarget mManualTarget = {};
     ControlTarget mAppliedTarget = {};
     ControlMode mMode = ControlMode::Auto;

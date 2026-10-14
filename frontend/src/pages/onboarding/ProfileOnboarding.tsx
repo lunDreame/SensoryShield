@@ -12,7 +12,7 @@ const levels = [
 const tones = [
   { cct: 250, label: "선명한 흰빛", swatch: "clear" },
   { cct: 333, label: "중간 빛", swatch: "balanced" },
-  { cct: 417, label: "따뜻한 빛", swatch: "calm" }
+  { cct: 454, label: "따뜻한 빛", swatch: "calm" }
 ];
 function sensitivity(weight: number): Level { return weight >= .7 ? "high" : weight <= .35 ? "low" : "medium"; }
 export function ProfileOnboarding({ initialConfig, onComplete }: ProfileOnboardingProps) {

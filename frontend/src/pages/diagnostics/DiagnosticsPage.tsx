@@ -51,6 +51,9 @@ export function DiagnosticsPage({ status, connectionError }: DiagnosticsPageProp
         <span>재실 센서</span><b className={status.sensor.pirValid ? "badge badge-green" : "badge badge-red"}>{status.sensor.pirValid ? "정상" : "확인 필요"}</b>
       </div></Panel>
       <SystemStatus system={status.system} />
+      {diagnostics?.demo && !unavailable ? <Panel title="환경 비교 기준" subtitle={diagnostics.demo.enabled ? "시연 빌드" : "실사용 빌드"}>
+        <p>{diagnostics.demo.baselineFrozen ? "리허설 실측 표본을 비교 기준으로 고정했어요. 실시간 감지와 제어는 계속해요." : "실시간 측정값으로 평소 환경을 자동 학습해요."}</p>
+      </Panel> : null}
       <Panel title="팬 PWM 진단" subtitle="전기적 구동 명령 상태이며 실제 RPM·회전·풍량은 아닙니다">
         {unavailable ? <p className="inline-error" role="alert">기기 연결 실패</p> : !fan ? <p className="profile-setting-note" role="status">팬 PWM 진단 정보 없음</p> :
           <div className="status-list">

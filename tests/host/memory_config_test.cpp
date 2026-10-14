@@ -136,9 +136,9 @@ int main() {
     assert(memory.FactoryReset() == 0);
     assert(!memory.InitialBaseline().Valid());
     assert(!memory.Config().occupancyAutomationEnabled);
-    assert(memory.Config().preferredCCTMireds == 417);
+    assert(memory.Config().preferredCCTMireds == DEFAULT_RELIEF_CCT);
     assert(memory.Config().preferredBrightness == 60 && memory.Config().minBrightness == 30 && memory.Config().maxBrightness == 80);
-    assert(memory.Config().reliefHoldMs == 3000);
+    assert(memory.Config().reliefHoldMs == AUTO_RELIEF_HOLD_MS);
     auto longHold = memory.Config(); longHold.reliefHoldMs = 1800000;
     assert(memory.SaveConfig(longHold) == 0); memory.Initialize();
     assert(memory.Config().reliefHoldMs == 1800000);

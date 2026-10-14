@@ -58,6 +58,7 @@ export interface FanDiagnostics {
 }
 
 export interface DiagnosticsResponse {
+  demo?: { enabled: boolean; baselineFrozen: boolean };
   firmware: string;
   uptimeSeconds: number;
   storage: SystemHealth["storage"];

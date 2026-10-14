@@ -3,7 +3,7 @@
 #include <cstdio>
 uint32_t testUptimeMs = 1000;
 int main() {
-    auto& a=Algorithm::Instance(); AppConfig c; c.minBrightness=1; c.maxBrightness=100; c.preferredBrightness=100; c.reliefHoldMs=1500; c.occupancyAutomationEnabled=true;
+    auto& a=Algorithm::Instance(); AppConfig c; c.occupancyTimeoutMs=30000; c.minBrightness=1; c.maxBrightness=100; c.preferredBrightness=100; c.reliefHoldMs=1500; c.occupancyAutomationEnabled=true;
     SensorSnapshot s={100,{.01f,.01f,0,1000,true},true,1000,true,true,true};
     auto at=[&](uint32_t now) {
         testUptimeMs=now; s.sound.timestampMs=now;

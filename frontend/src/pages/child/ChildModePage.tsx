@@ -1,6 +1,6 @@
 import { displayedStimulusScore, STIMULUS_CHANGE_THRESHOLD, STIMULUS_STRONG_THRESHOLD } from "../../shared/lib/stimulus-score";
 import { useRef, useState } from "react";
-import { getStatus, getProfile, setFan, setLight, setMode } from "../../shared/api/client";
+import { requestComfort } from "../../shared/api/client";
 import { applyChildComfort, type ComfortAction } from "../../shared/lib/child-control";
 import type { StatusResponse } from "../../shared/types/domain";
 
@@ -10,7 +10,7 @@ interface ChildModePageProps {
 }
 
 const actions: Array<{ action: ComfortAction; label: string; description: string; icon: string; style: string }> = [
-  { action: "BRIGHT", label: "너무 밝아요", description: "조명을 조금 낮춰요", icon: "feedback-too-bright", style: "light" },
+  { action: "BRIGHT", label: "너무 밝아요", description: "조명을 서서히 낮춰요", icon: "feedback-too-bright", style: "light" },
   { action: "DARK", label: "너무 어두워요", description: "조명을 조금 밝혀요", icon: "feedback-too-dark", style: "dark" },
   { action: "LOUD", label: "너무 시끄러워요", description: "조명과 팬 세기를 낮춰요", icon: "feedback-too-loud", style: "sound" },
   { action: "QUIET", label: "너무 조용해요", description: "팬을 켜거나 조금 높여요", icon: "feedback-too-quiet", style: "quiet" }
@@ -41,7 +41,7 @@ export function ChildModePage({ status, connectionError }: ChildModePageProps) {
     setMessage(null);
     setError(null);
     try {
-      setMessage(await applyChildComfort(action, { getStatus, getProfile, setLight, setFan, setMode }));
+      setMessage(await applyChildComfort(action, { requestComfort }));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "기기에 알려주지 못했어요. 연결을 확인해 주세요.");
     } finally {

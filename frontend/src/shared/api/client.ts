@@ -155,3 +155,7 @@ export function getEnvironmentMeasurement(): Promise<EnvironmentMeasurement> {
 export function commandEnvironmentMeasurement(action: "start" | "cancel"): Promise<EnvironmentMeasurement> {
   return request("/api/environment-measurement", { method: "POST", body: JSON.stringify({ action }) });
 }
+
+export function requestComfort(action: import("../lib/child-control").ComfortAction): Promise<{ ok: boolean; changed?: boolean }> {
+  return request("/api/comfort", { method: "POST", body: JSON.stringify({ action }) });
+}
