@@ -13,6 +13,7 @@ struct Room {
     int brightness=40, cct=250, fan=60;
     SensorSnapshot s{}; StimulusScore score{}; ControlTarget target{};
     Room() {
+        c.reliefHoldMs=3000; c.occupancyTimeoutMs=30000; // Explicit short regression fixture.
         c.preferredBrightness=40; c.occupancyAutomationEnabled=false;
         a.Initialize(c);
         target={true,40,250,false,255,255,255,true,60,0};

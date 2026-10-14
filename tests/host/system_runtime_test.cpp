@@ -94,10 +94,63 @@ int main() {
     system.SetMode(ControlMode::Override,1000);
     testUptimeMs+=750;system.mSnapshot.sound.timestampMs=testUptimeMs;system.AlgorithmWork();assert(system.Mode()==ControlMode::Override);
     testUptimeMs+=250;system.mSnapshot.sound.timestampMs=testUptimeMs;system.AlgorithmWork();
-    assert(system.Mode()==ControlMode::Auto && system.Target().brightnessPercent==60 && system.Target().fanPercent==60);
+    assert(system.Mode()==ControlMode::Auto && system.Target().brightnessPercent==DEFAULT_NORMAL_BRIGHTNESS && system.Target().fanPercent==DEFAULT_NORMAL_FAN);
     assert(system.SetManualFan(true,60)==0);
     system.SetSafeState();
     assert(system.Mode()==ControlMode::Safe && !system.Target().fanOn && !system.mAppliedTarget.fanOn);
     assert(fan.GetOutputState().valid && fan.GetOutputState().appliedDutyPercent==0);
+    // Exercise the real child endpoint target path and scheduler, not browser fixtures.
+    AppConfig demo=Memory::Instance().Config();
+    demo.maxBrightness=demo.preferredBrightness=demo.preferredFanPercent=100;
+    demo.reliefHoldMs=5000;demo.preferredCCTMireds=454;
+    assert(system.UpdateConfig(demo)==0);
+    assert(system.SetManualLight(true,100,250)==0 && system.SetManualFan(true,100)==0);
+    auto boost=hostLastScheduledWork;testUptimeMs+=350;host_run_delayable(boost);
+    system.SetMode(ControlMode::Auto);
+    auto run=[&](uint32_t duration,float rms=.01f) {
+        for(uint32_t t=0;t<duration;t+=25) {
+            testUptimeMs+=25;
+            if(t%200==0) {
+                const auto light=LightDevice::Instance().CurrentState();
+                const auto motor=fan.GetOutputState();
+                system.mSnapshot={100,{rms,rms,0,testUptimeMs,true},true,testUptimeMs,true,true,true};
+                system.mSnapshot.observedAtMs=testUptimeMs;
+                system.mSnapshot.observedOutputs={true,light.on,light.brightnessPercent,light.cctMireds,light.rgbMode,
+                    light.red,light.green,light.blue,motor.appliedDutyPercent>0,motor.appliedDutyPercent,
+                    light.brightnessPercent==system.mTarget.brightnessPercent && light.cctMireds==system.mTarget.cctMireds,
+                    motor.appliedDutyPercent==system.mTarget.fanPercent};
+                system.mSnapshot.observedOutputs.fanOutputValid=motor.valid;
+                system.mSnapshot.observedOutputs.fanBoosting=motor.boosting;
+            }
+            if(t%250==0) system.AlgorithmWork();
+            system.ActuatorRampWork();
+        }
+    };
+    run(15000);assert(system.EnvironmentBaselineReady());
+    assert(system.RequestComfort(ComfortAction::Bright)==0);
+    assert(system.Mode()==ControlMode::Override && system.OverrideRemainingSeconds()==CHILD_HOLD_MS/1000);
+    assert(system.mAppliedTarget.brightnessPercent==100); // Acceptance does not jump output.
+    run(2500);assert(system.mAppliedTarget.brightnessPercent<100 && system.mAppliedTarget.brightnessPercent>30);
+    run(3500);
+#if SENSORYSHIELD_DEMO_DEFAULTS
+    assert(system.mAppliedTarget.brightnessPercent==30 && system.Mode()==ControlMode::Override);
+    assert(system.OverrideRemainingSeconds()>=4);
+    run(5500);assert(system.Mode()==ControlMode::Auto);
+    run(5000);assert(system.mAppliedTarget.brightnessPercent==100 && system.mAppliedTarget.cctMireds==250);
+    assert(system.RequestComfort(ComfortAction::Loud)==0);
+    run(20000,.08f);assert(system.Mode()==ControlMode::Auto);
+    assert(system.mAppliedTarget.brightnessPercent==30 && system.mAppliedTarget.fanPercent==20);
+    run(14000);assert(system.mAppliedTarget.brightnessPercent==100 && system.mAppliedTarget.fanPercent==100);
+#else
+    assert(system.mAppliedTarget.brightnessPercent==70 && system.Mode()==ControlMode::Override);
+    run(10000);assert(system.Mode()==ControlMode::Override && system.OverrideRemainingSeconds()>1700);
+#endif
+    assert(system.RequestComfort(ComfortAction::Bright)==0);
+    run(1000);assert(system.SetManualLight(false,0,250)==0);run(17000);
+    assert(system.Mode()==ControlMode::Manual && !system.mAppliedTarget.lightOn && !system.mChildRequest);
+    assert(system.RequestComfort(ComfortAction::Bright)==-EALREADY); // Off stays off.
+    assert(system.RequestComfort(ComfortAction::Dark)==0);run(1000);
+    assert(system.UpdateConfig(demo)==0);assert(!system.mChildRequest && system.Mode()==ControlMode::Auto);
+    puts("production child request, actual arrival timer, mode expiry, high-input retention, manual cancellation and settings edit passed");
     puts("production runtime manual/auto serialization, asynchronous PWM retry, manual-off restart, override expiration and physical safe shutdown passed");
 }

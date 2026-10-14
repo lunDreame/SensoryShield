@@ -6,7 +6,7 @@
 
 uint32_t testUptimeMs=1000;
 int main() {
-    auto& a=Algorithm::Instance(); AppConfig c;
+    auto& a=Algorithm::Instance(); AppConfig c; c.reliefHoldMs=3000; c.preferredCCTMireds=417; // Explicit proportional-controller regression fixture.
     assert(c.preferredBrightness==60 && c.minBrightness==30 && c.maxBrightness==80);
     assert(c.normalCCTMireds==250 && c.preferredCCTMireds==417);
     assert(c.preferredFanPercent==60 && c.reliefFanPercent==20);
@@ -48,12 +48,12 @@ int main() {
     extraLux=0; run(5000); assert(brightness<60); // 3s hold + low confirmation precede gradual return.
     uint32_t lightStart=elapsed;
     while(brightness!=60 || cct!=250 || fan!=60) { run(1000); assert(elapsed-lightStart<120000); }
-    printf("demo light restoration after low confirmation: %u ms\n",elapsed-lightStart+5000);
+    printf("proportional light restoration after low confirmation: %u ms\n",elapsed-lightStart+5000);
     run(10000); assert(a.LightBaselineMedian()==baseline);
     extraSound=.06f; run(35000); assert(fan==20 && brightness==30 && cct==417);
     extraSound=0; uint32_t fanStart=elapsed;
     while(fan!=60 || brightness!=60 || cct!=250) { run(1000); assert(elapsed-fanStart<120000); }
-    printf("demo coupled sound restoration: %u ms\n",elapsed-fanStart);
+    printf("proportional coupled sound restoration: %u ms\n",elapsed-fanStart);
     run(10000);
     automatic=false; target.brightnessPercent=40; target.fanPercent=30;
     const auto oldLux=a.LightBaselineMedian(),oldSound=a.SoundBaselineMedian();
@@ -62,5 +62,5 @@ int main() {
     assert(brightness==60 && fan==60 && score.baselineReady);
     // Default demo ignores absent motion only for termination, not the raw telemetry.
     assert(!s.occupied && brightness>0 && fan>0);
-    puts("fresh demo defaults, transient/sustained light, coupled sound, complete recovery and manual learning exclusion passed");
+    puts("explicit proportional fixture, transient/sustained light, coupled sound, complete recovery and manual learning exclusion passed");
 }

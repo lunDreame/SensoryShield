@@ -3,7 +3,7 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(Zephyr REQUIRED HINTS /opt/nordic/ncs/v3.4.0/zephyr)
 
 project(SensoryShield)
-option(SENSORYSHIELD_DEMO_DEFAULTS "Use short fresh-install demo timing defaults" ON)
+option(SENSORYSHIELD_DEMO_DEFAULTS "Use rehearsal timing, targets and optional measured baseline" ON)
 target_compile_definitions(app PRIVATE SENSORYSHIELD_DEMO_DEFAULTS=$<BOOL:${SENSORYSHIELD_DEMO_DEFAULTS}>)
 
 include(${ZEPHYR_CONNECTEDHOMEIP_MODULE_DIR}/config/nrfconnect/app/enable-gnu-std.cmake)

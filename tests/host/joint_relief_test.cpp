@@ -8,6 +8,7 @@ uint32_t testUptimeMs=0;
 struct Rig {
     SensoryReliefController controller;
     AppConfig c;
+    Rig() { c.reliefHoldMs=3000; } // Short fixture hold; production everyday default is tested separately.
     SensorSnapshot s{100,{.01f,.01f,0,0,true},true,0,true,true,true};
     SensoryTarget target{};
     uint32_t now=0;
@@ -31,7 +32,7 @@ int main() {
         for(int i=0;i<3;++i) { auto t=tick(lux,rms).second; assert(t.brightnessPercent==60 && t.fanPercent==60); }
         auto result=tick(lux,rms);
         if(channel==2) assert(result.first.light<1.4f && result.first.sound<1.4f && result.first.combined>=1.4f);
-        assert(result.second.brightnessPercent<60 && result.second.fanPercent<60 && result.second.cctMireds==417);
+        assert(result.second.brightnessPercent<60 && result.second.fanPercent<60 && result.second.cctMireds==c.preferredCCTMireds);
         assert(a.LightBaselineMedian()==100 && a.SoundBaselineMedian()==.01f);
     }
     {

@@ -22,7 +22,7 @@ LOG_MODULE_REGISTER(threadrest, LOG_LEVEL_INF);
 #define THREAD_REST_REQUEST_CAPACITY 512U
 #define THREAD_REST_RESPONSE_CAPACITY 1024U
 
-enum class ApiRoute : uint8_t { Status, Light, Fan, Mode, Profile, Diagnostics, FactoryReset, Measurement };
+enum class ApiRoute : uint8_t { Status, Light, Fan, Mode, Profile, Diagnostics, FactoryReset, Measurement, Comfort };
 
 struct ApiContext {
     ApiRoute route;
@@ -157,6 +157,7 @@ ApiContext kStatusContext{ApiRoute::Status};
 ApiContext kLightContext{ApiRoute::Light};
 ApiContext kFanContext{ApiRoute::Fan};
 ApiContext kModeContext{ApiRoute::Mode};
+ApiContext kComfortContext{ApiRoute::Comfort};
 ApiContext kProfileContext{ApiRoute::Profile};
 ApiContext kDiagnosticsContext{ApiRoute::Diagnostics};
 ApiContext kResetContext{ApiRoute::FactoryReset};
@@ -492,6 +493,22 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
             context->requestLength = 0U;
             break;
         }
+        case ApiRoute::Comfort: {
+            context->request[context->requestLength] = '\0';
+            MeasurementRequest payload{};
+            const int parsed=json_obj_parse(context->request,context->requestLength,
+                kMeasurementFields,ARRAY_SIZE(kMeasurementFields),&payload);
+            ret=-EINVAL;
+            if(parsed==BIT(0) && payload.action) {
+                if(strcmp(payload.action,"BRIGHT")==0) ret=GetSystem()->RequestComfort(ComfortAction::Bright);
+                else if(strcmp(payload.action,"DARK")==0) ret=GetSystem()->RequestComfort(ComfortAction::Dark);
+                else if(strcmp(payload.action,"LOUD")==0) ret=GetSystem()->RequestComfort(ComfortAction::Loud);
+                else if(strcmp(payload.action,"QUIET")==0) ret=GetSystem()->RequestComfort(ComfortAction::Quiet);
+            }
+            if(ret==-EALREADY) { ret=0; body="{\"ok\":true,\"changed\":false}"; bodyLength=strlen(body); }
+            context->requestLength=0;
+            break;
+        }
         case ApiRoute::FactoryReset: {
             context->request[context->requestLength] = '\0';
             ResetRequest payload{};
@@ -530,6 +547,7 @@ int HandleApi(struct http_client_ctx* client, enum http_transaction_status statu
 API_RESOURCE_DETAIL(statusDetail, BIT(HTTP_GET) | BIT(HTTP_OPTIONS), kStatusContext);
 API_RESOURCE_DETAIL(lightDetail, BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kLightContext);
 API_RESOURCE_DETAIL(fanDetail, BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kFanContext);
+API_RESOURCE_DETAIL(comfortDetail, BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kComfortContext);
 API_RESOURCE_DETAIL(modeDetail, BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kModeContext);
 API_RESOURCE_DETAIL(measurementDetail, BIT(HTTP_GET) | BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kMeasurementContext);
 API_RESOURCE_DETAIL(profileDetail, BIT(HTTP_GET) | BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kProfileContext);
@@ -539,6 +557,7 @@ API_RESOURCE_DETAIL(resetDetail, BIT(HTTP_POST) | BIT(HTTP_OPTIONS), kResetConte
 HTTP_RESOURCE_DEFINE(statusResource, sensoryshield_thread_rest, "/api/status", &statusDetail);
 HTTP_RESOURCE_DEFINE(lightResource, sensoryshield_thread_rest, "/api/light", &lightDetail);
 HTTP_RESOURCE_DEFINE(fanResource, sensoryshield_thread_rest, "/api/fan", &fanDetail);
+HTTP_RESOURCE_DEFINE(comfortResource, sensoryshield_thread_rest, "/api/comfort", &comfortDetail);
 HTTP_RESOURCE_DEFINE(modeResource, sensoryshield_thread_rest, "/api/mode", &modeDetail);
 HTTP_RESOURCE_DEFINE(measurementResource, sensoryshield_thread_rest, "/api/environment-measurement", &measurementDetail);
 HTTP_RESOURCE_DEFINE(profileResource, sensoryshield_thread_rest, "/api/profile", &profileDetail);
@@ -683,7 +702,7 @@ int ThreadRest::BuildDiagnosticsJson(char* buffer, size_t bufferSize) const {
 
     const int written =
         snprintf(buffer, bufferSize,
-                 "{\"firmware\":\"%s\",\"uptimeSeconds\":%u,\"storage\":{\"appConfig\":true,"
+                 "{\"demo\":{\"enabled\":%s,\"baselineFrozen\":%s},\"firmware\":\"%s\",\"uptimeSeconds\":%u,\"storage\":{\"appConfig\":true,"
                  "\"deviceTable\":true},\"sensors\":{\"illuminance\":%s,\"mic\":%s,\"pir\":%s},"
                  "\"matter\":{\"commissioned\":%s,\"fabricCount\":%u,\"threadAttached\":%s},"
                  "\"fan\":{\"targetPercent\":%u,\"appliedDutyPercent\":%u,\"boosting\":%s,"
@@ -692,6 +711,7 @@ int ThreadRest::BuildDiagnosticsJson(char* buffer, size_t bufferSize) const {
                  "\"profile\":{\"lightWeight\":%s,\"soundWeight\":%s,\"minBrightness\":%u,"
                  "\"maxBrightness\":%u,\"minCCTMireds\":%u,\"maxCCTMireds\":%u,"
                  "\"preferredCCTMireds\":%u,\"preferredBrightness\":%u,\"preferredFanPercent\":%u,\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u,\"normalCCTMireds\":%u,\"reliefFanPercent\":%u,\"reliefHoldMs\":%u,\"recoverConfirmMs\":%u,\"occupancyAutomationEnabled\":%s,\"profileConfigured\":%s}}",
+                 SENSORYSHIELD_DEMO_DEFAULTS ? "true" : "false", GetSystem()->BaselineFrozen() ? "true" : "false",
                  APP_NAME, k_uptime_get_32() / 1000U, snapshot.illuminanceValid ? "true" : "false",
                  snapshot.micValid ? "true" : "false", snapshot.pirValid ? "true" : "false",
                  GetMatterBridge()->Commissioned() ? "true" : "false", GetMatterBridge()->FabricCount(),

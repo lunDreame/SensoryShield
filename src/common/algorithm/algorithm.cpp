@@ -1,5 +1,6 @@
 #include "common/algorithm/algorithm.h"
 
+#include "demo/environment_samples.h"
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
@@ -28,9 +29,20 @@ int Algorithm::Initialize(const AppConfig& config) {
     mObserved = {};
     mObserved.controlInputsSettled = false;
     mRelief.Reset();
+    mTimed.Reset(); mTimedChild=false; mBaselineFrozen=false;
+    if (RehearsalBaseline::Enabled) InstallRehearsalBaseline(RehearsalBaseline::Samples);
     mPreviousTarget = {false, config.minBrightness, config.maxCCTMireds, false, 255, 255, 255, false, 0, 0.0f};
     LOG_INF("Algorithm ready");
     return 0;
+}
+
+bool Algorithm::InstallRehearsalBaseline(const InitialEnvironment& initial) {
+#if SENSORYSHIELD_DEMO_DEFAULTS
+    if (!initial.Valid() || !RehearsalBaseline::Matches(mConfig)) return false;
+    mStimulusScorer.SeedEnvironment(initial); mBaselineFrozen=true; return true;
+#else
+    (void)initial; return false; // Everyday operation always learns live samples.
+#endif
 }
 
 void Algorithm::SetConfig(const AppConfig& config) {
@@ -45,13 +57,17 @@ void Algorithm::SetConfig(const AppConfig& config) {
         mSoundRebasePending = true;
         mRelief.OnDefaultOutputChanged();
     }
+    if (mBaselineFrozen && !RehearsalBaseline::Matches(config)) {
+        mBaselineFrozen=false; mStimulusScorer.Reset();
+    }
+    mTimed.OnConfigChanged(config,k_uptime_get_32()); mTimedChild=false;
     mConfig = config;
 }
 
 StimulusScore Algorithm::EvaluateEnvironment(const SensorSnapshot& snapshot, bool automaticMode) {
     mObserved = mOutputAware.Observe(snapshot);
     SensorSnapshot learning = mObserved;
-    bool ordinaryOutput = mRelief.IsNormal();
+    bool ordinaryOutput = (SENSORYSHIELD_DEMO_DEFAULTS || mTimedChild) ? mTimed.IsNormal() : mRelief.IsNormal();
     if (snapshot.observedOutputs.valid) {
         const auto& o = snapshot.observedOutputs;
         const uint8_t normalBrightness = ClampValue(mConfig.preferredBrightness, mConfig.minBrightness, mConfig.maxBrightness);
@@ -70,8 +86,8 @@ StimulusScore Algorithm::EvaluateEnvironment(const SensorSnapshot& snapshot, boo
         snapshot.observedOutputs.valid && mObserved.controlInputsSettled &&
         mObserved.micValid && mObserved.sound.valid && mStimulusScorer.RebaseSound(mObserved.sound.energy);
     if (soundRebased) mSoundRebasePending = false;
-    learning.learnLight = learning.learnLight && automaticMode && ordinaryOutput;
-    learning.learnSound = learning.learnSound && automaticMode && ordinaryOutput;
+    learning.learnLight = learning.learnLight && !mBaselineFrozen && automaticMode && ordinaryOutput;
+    learning.learnSound = learning.learnSound && !mBaselineFrozen && automaticMode && ordinaryOutput;
     // Do not count the seed twice or admit measurements from an earlier output.
     learning.learnLight = learning.learnLight && !mLightRebasePending && !rebased;
     learning.learnSound = learning.learnSound && !mSoundRebasePending && !soundRebased;
@@ -101,6 +117,11 @@ ControlTarget Algorithm::Evaluate(const SensorSnapshot& snapshot, const Stimulus
         effectiveSnapshot.occupied = true;
     }
 
+    if (SENSORYSHIELD_DEMO_DEFAULTS || mTimedChild) {
+        mPreviousTarget=mTimed.Evaluate(effectiveSnapshot,mConfig,stimulus.combined,now);
+        if (mTimed.IsNormal()) mTimedChild=false;
+        return mPreviousTarget;
+    }
     ControlTarget target = mPreviousTarget;
     target.sensoryScore = stimulus.combined;
     const SensoryTarget light = mRelief.Evaluate(effectiveSnapshot, mConfig, stimulus.combined, now);
@@ -117,4 +138,10 @@ ControlTarget Algorithm::Evaluate(const SensorSnapshot& snapshot, const Stimulus
 
     mPreviousTarget = target;
     return target;
+}
+
+ControlTarget Algorithm::EvaluateChild(const SensorSnapshot& snapshot,const StimulusScore& stimulus) {
+    const auto& effective=snapshot.observedOutputs.valid ? mObserved : snapshot;
+    mPreviousTarget=mTimed.Evaluate(effective,mConfig,stimulus.combined,k_uptime_get_32(),false);
+    return mPreviousTarget;
 }

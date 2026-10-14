@@ -18,6 +18,7 @@ struct Room {
     SensorSnapshot s{}; StimulusScore score{};
     ControlTarget target{true,60,250,false,255,255,255,true,60,0};
     Room(uint8_t normal=60) {
+        c.reliefHoldMs=3000; // Short regression fixture, independent of the everyday default.
         c.preferredFanPercent=normal; c.reliefFanPercent=0;
         target.fanPercent=normal; a.Initialize(c); assert(fan.Initialize()==0);
     }
