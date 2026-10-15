@@ -22,7 +22,7 @@ export function EnvironmentSummary({ sensor }: EnvironmentSummaryProps) {
         <Metric label="사람 움직임" value={sensor.pirValid ? (sensor.occupied ? "감지했어요" : "감지되지 않아요") : "연결 대기"} detail={sensor.pirValid ? "현재 상태" : "기기 연결 후 표시돼요"} />
         <div className={`metric sound-metric${soundValid ? "" : " sound-metric-unavailable"}`}>
           <span>주변 소리</span>
-          <strong>{soundValid ? `${soundPercent.toFixed(1)}%` : "측정 불가"}</strong>
+          <strong>{soundValid ? `${soundPercent.toFixed(3)}%` : "측정 불가"}</strong>
           {soundValid ? <div className="sound-input-track" aria-hidden="true"><div style={{ width: `${soundPercent}%` }} /></div> : null}
           <small>{soundValid ? "마이크 상대 입력 · dB 아님" : "마이크 연결 상태를 확인하세요"}</small>
         </div>

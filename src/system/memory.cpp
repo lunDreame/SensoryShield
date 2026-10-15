@@ -116,7 +116,9 @@ int Memory::Initialize() {
             auto* context = static_cast<LoadContext*>(param);
             if (len == sizeof(StoredSetup)) {
                 const auto bytes = readCb(cbArg, &context->setup, len);
-                if (bytes != static_cast<ssize_t>(len) || context->setup.config.version != CONFIG_VERSION) return -EINVAL;
+                if (bytes != static_cast<ssize_t>(len) ||
+                    (context->setup.config.version != CONFIG_VERSION &&
+                     context->setup.config.version != OCCUPANCY_CONFIG_VERSION)) return -EINVAL;
             } else if (len == sizeof(StoredSetupV8)) {
                 StoredSetupV8 old{};
                 if (readCb(cbArg, &old, len) != static_cast<ssize_t>(len)) return -EINVAL;
@@ -135,8 +137,14 @@ int Memory::Initialize() {
                 if (context->setup.config.version != LEGACY_CONFIG_VERSION && context->setup.config.version != PREVIOUS_CONFIG_VERSION) return -EINVAL;
                 context->setup.config.normalCCTMireds = context->setup.config.minCCTMireds;
             } else return -EINVAL;
-            if (context->setup.config.version != CONFIG_VERSION)
+            if (context->setup.config.version < OCCUPANCY_CONFIG_VERSION)
                 context->setup.config.occupancyAutomationEnabled = true;
+#if SENSORYSHIELD_DEMO_DEFAULTS
+            // Migrate the former demo default once; preserve custom outputs,
+            // sensitivity, tone, timings, occupancy and Matter registrations.
+            if (context->setup.config.version < CONFIG_VERSION && context->setup.config.reliefFanPercent == 20)
+                context->setup.config.reliefFanPercent = 0;
+#endif
             context->read = true;
             return 0;
         }, &loaded);
@@ -153,7 +161,8 @@ int Memory::Initialize() {
         config.preferredFanPercent = AUTO_FAN_NORMAL_PERCENT;
         config.version = CONFIG_VERSION;
     }
-    if (config.version == OUTPUT_CONFIG_VERSION || config.version == RELIEF_CONFIG_VERSION) config.version = CONFIG_VERSION;
+    if (config.version == OUTPUT_CONFIG_VERSION || config.version == RELIEF_CONFIG_VERSION ||
+        config.version == OCCUPANCY_CONFIG_VERSION) config.version = CONFIG_VERSION;
     mInitial = {};
     if (ret == 0 && loaded.read && config.version == CONFIG_VERSION) {
         mConfig = NormalizeConfig(config);
@@ -197,7 +206,7 @@ int Memory::LoadRuntimeState(ControlMode* mode, ControlTarget* target) {
         &state);
 
     const ControlMode storedMode = static_cast<ControlMode>(state.mode);
-    if (ret != 0 || (state.version != CONFIG_VERSION && state.version != LEGACY_CONFIG_VERSION && state.version != PREVIOUS_CONFIG_VERSION && state.version != SETUP_CONFIG_VERSION && state.version != OUTPUT_CONFIG_VERSION && state.version != RELIEF_CONFIG_VERSION) ||
+    if (ret != 0 || (state.version != CONFIG_VERSION && state.version != OCCUPANCY_CONFIG_VERSION && state.version != LEGACY_CONFIG_VERSION && state.version != PREVIOUS_CONFIG_VERSION && state.version != SETUP_CONFIG_VERSION && state.version != OUTPUT_CONFIG_VERSION && state.version != RELIEF_CONFIG_VERSION) ||
         !IsValidMode(storedMode)) {
         if (ret == 0) {
             LOG_WRN("Stored runtime state is invalid, clearing");
@@ -253,7 +262,7 @@ int Memory::LoadDeviceTable(ChildDeviceDescriptor* devices, uint8_t maxDevices, 
         },
         &table);
 
-    if (ret == 0 && (table.version == CONFIG_VERSION || table.version == LEGACY_CONFIG_VERSION || table.version == PREVIOUS_CONFIG_VERSION || table.version == SETUP_CONFIG_VERSION || table.version == OUTPUT_CONFIG_VERSION || table.version == RELIEF_CONFIG_VERSION) &&
+    if (ret == 0 && (table.version == CONFIG_VERSION || table.version == OCCUPANCY_CONFIG_VERSION || table.version == LEGACY_CONFIG_VERSION || table.version == PREVIOUS_CONFIG_VERSION || table.version == SETUP_CONFIG_VERSION || table.version == OUTPUT_CONFIG_VERSION || table.version == RELIEF_CONFIG_VERSION) &&
         IsValidDeviceTable(table.devices, table.count)) {
         *count = table.count > maxDevices ? maxDevices : table.count;
         memcpy(devices, table.devices, sizeof(ChildDeviceDescriptor) * (*count));

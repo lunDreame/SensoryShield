@@ -139,7 +139,7 @@ int main() {
     run(5000);assert(system.mAppliedTarget.brightnessPercent==100 && system.mAppliedTarget.cctMireds==250);
     assert(system.RequestComfort(ComfortAction::Loud)==0);
     run(20000,.08f);assert(system.Mode()==ControlMode::Auto);
-    assert(system.mAppliedTarget.brightnessPercent==30 && system.mAppliedTarget.fanPercent==20);
+    assert(system.mAppliedTarget.brightnessPercent==30 && system.mAppliedTarget.fanPercent==demo.reliefFanPercent);
     run(14000);assert(system.mAppliedTarget.brightnessPercent==100 && system.mAppliedTarget.fanPercent==100);
 #else
     assert(system.mAppliedTarget.brightnessPercent==70 && system.Mode()==ControlMode::Override);

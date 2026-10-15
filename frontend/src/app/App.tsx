@@ -15,20 +15,34 @@ export function App() {
   const [route, setRoute] = useState<Route>("dashboard");
   const [viewMode, setViewMode] = useState<ViewMode>(() => localStorage.getItem("sensoryshield-view") === "child" ? "child" : "guardian");
   const [profile, setProfile] = useState<AppConfig | null>(null);
-  const [profileChecked, setProfileChecked] = useState(false);
+  const [setupComplete, setSetupComplete] = useState(false);
+  const [profileError, setProfileError] = useState(false);
+  const [profileAttempt, setProfileAttempt] = useState(0);
   const { status, error, updatedAt } = useStatus();
 
   useEffect(() => {
     let active = true;
+    setProfileError(false);
     void getProfile()
       .then((stored) => { if (active) setProfile(stored); })
-      .catch(() => { /* The regular connection state explains an unavailable device. */ })
-      .finally(() => { if (active) setProfileChecked(true); });
+      .catch(() => { if (active) setProfileError(true); });
     return () => { active = false; };
-  }, []);
+  }, [profileAttempt]);
 
-  if (profileChecked && profile && !profile.profileConfigured) {
-    return <ProfileOnboarding initialConfig={profile} onComplete={setProfile} />;
+  // A new page visit starts with the survey even if another computer previously
+  // configured this board. Loading/failure must never expose the dashboard.
+  if (!profile) {
+    return <main className="onboarding-shell"><section className="onboarding-card" aria-live="polite">
+      <div className="onboarding-brand"><img src="/brand/sensoryshield-logo.png" alt="SensoryShield" /></div>
+      <h1>{profileError ? "기기 설정을 불러오지 못했어요" : "처음 설정을 준비하고 있어요"}</h1>
+      <p className="onboarding-description">{profileError ? "기기 연결을 확인하고 다시 시도해 주세요." : "저장된 설정을 확인한 뒤 민감도와 완화 빛을 선택해 주세요."}</p>
+      {profileError ? <button className="button button-primary" type="button" onClick={() => setProfileAttempt(value => value + 1)}>다시 시도</button> : null}
+    </section></main>;
+  }
+  if (!setupComplete || !profile.profileConfigured) {
+    return <ProfileOnboarding initialConfig={profile} onComplete={next => {
+      setProfile(next); setSetupComplete(true); setViewMode("guardian"); setRoute("dashboard");
+    }} />;
   }
 
   function changeViewMode(next: ViewMode) {

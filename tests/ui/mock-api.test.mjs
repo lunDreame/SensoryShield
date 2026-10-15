@@ -59,7 +59,7 @@ assert.equal((await request('/api/mode',{mode:'OVERRIDE',durationMinutes:0})).st
 await request('/api/fan',{power:false,speed:0});
 assert.equal((await request('/api/status')).body.outputs.fanOn,false);
 await request('/__mock/scenario',{scenario:'noise'});
-assert.equal((await request('/api/status')).body.outputs.fanPercent,20);
+assert.equal((await request('/api/status')).body.outputs.fanPercent,0);
 await request('/__mock/scenario',{scenario:'mic-error'});
 assert.equal((await request('/api/status')).body.sensor.micValid,false);
 await request('/__mock/scenario',{scenario:'vacant'});

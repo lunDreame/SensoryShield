@@ -40,7 +40,7 @@ await advance(4500);assert.equal((await state()).system.mode,'OVERRIDE');
 await advance(500);assert.equal((await state()).system.mode,'AUTO');
 await advance(5000);assert.equal((await state()).outputs.brightnessPercent,100);
 await applyChildComfort('LOUD',api);await advance(5000);
-assert.equal((await state()).outputs.brightnessPercent,30);assert.equal((await state()).outputs.fanPercent,20);
+assert.equal((await state()).outputs.brightnessPercent,30);assert.equal((await state()).outputs.fanPercent,0);
 await request('/api/light',{power:false,brightness:0,cct:250});await request('/api/fan',{power:false,speed:0});
 assert.match(await applyChildComfort('BRIGHT',api),/더 바꿀 수 없어요/);
 assert.equal((await state()).outputs.lightOn,false);

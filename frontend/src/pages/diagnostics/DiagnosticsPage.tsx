@@ -40,6 +40,7 @@ export function DiagnosticsPage({ status, connectionError }: DiagnosticsPageProp
   }
 
   const fan = diagnostics?.fan;
+  const mic = diagnostics?.microphone;
   const state = fan ? fanState(fan) : null;
   const unavailable = connectionError || diagnosticsError;
   return (
@@ -51,6 +52,15 @@ export function DiagnosticsPage({ status, connectionError }: DiagnosticsPageProp
         <span>재실 센서</span><b className={status.sensor.pirValid ? "badge badge-green" : "badge badge-red"}>{status.sensor.pirValid ? "정상" : "확인 필요"}</b>
       </div></Panel>
       <SystemStatus system={status.system} />
+      {mic ? <Panel title="마이크 수신 상태" subtitle="새 측정값이 계속 들어오는지 확인합니다">
+        {unavailable ? <p className="inline-error">기기 연결 실패</p> : <div className="status-list">
+          <span>수신 상태</span><b className={mic.fresh ? "badge badge-green" : "badge badge-yellow"}>{mic.fresh ? "정상 수신" : mic.recovering ? "수신 복구 중" : "새 측정값 대기"}</b>
+          <span>수신 표본 수</span><b>{mic.sampleCount}</b>
+          <span>마지막 수신 후</span><b>{mic.sampleCount ? `${(mic.sampleAgeMs / 1000).toFixed(1)}초` : "아직 없음"}</b>
+          <span>복구 시도</span><b>{mic.restartCount}회</b>
+          <span>현재 오류</span><b>{mic.lastError || "없음"}</b>
+        </div>}
+      </Panel> : null}
       {diagnostics?.demo && !unavailable ? <Panel title="환경 비교 기준" subtitle={diagnostics.demo.enabled ? "시연 빌드" : "실사용 빌드"}>
         <p>{diagnostics.demo.baselineFrozen ? "리허설 실측 표본을 비교 기준으로 고정했어요. 실시간 감지와 제어는 계속해요." : "실시간 측정값으로 평소 환경을 자동 학습해요."}</p>
       </Panel> : null}

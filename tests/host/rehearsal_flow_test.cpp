@@ -10,7 +10,7 @@ struct Rig {
     AppConfig c;
     int brightness = 100, cct = 250, fan = 100;
     float extraLux = 0, extraSound = 0;
-    bool automatic = true, micValid = true, pir = true, fanValid = true;
+    bool automatic = true, micValid = true, pir = true, fanValid = true, staleMic = false;
     uint32_t elapsed = 0;
     SensorSnapshot s{};
     StimulusScore score{};
@@ -32,6 +32,7 @@ struct Rig {
                      micValid,
                      true};
                 s.observedAtMs = testUptimeMs;
+                if (staleMic) s.sound.timestampMs = testUptimeMs - 1500;
                 s.observedOutputs = {true,
                                      brightness > 0,
                                      static_cast<uint8_t>(brightness),
@@ -63,10 +64,30 @@ struct Rig {
         return brightness == 100 && cct == 250 && fan == 100;
     }
     bool Relief() const {
-        return brightness == 30 && cct == 454 && fan == 20;
+        return brightness == 30 && cct == 454 && fan == c.reliefFanPercent;
     }
 };
 int main() {
+    // Reproduce the reported AUTO/high-score/white-light stall, then restore
+    // fresh capture. Every selected relief tone must reach the output with fan OFF.
+    for (uint16_t tone : {250, 333, 454}) {
+        Rig recovered;
+        recovered.c.preferredCCTMireds=tone;
+        recovered.a.SetConfig(recovered.c);
+        recovered.Run(15000);
+        recovered.staleMic=true; recovered.extraLux=50;
+        recovered.Run(12000);
+        assert(recovered.score.combined>=1.4f && recovered.brightness==100);
+        assert(!recovered.a.ControlInputsSettled());
+        recovered.staleMic=false; recovered.Run(15000);
+        assert(recovered.brightness==30 && recovered.cct==tone && recovered.fan==0);
+        // A new tone during relief is also applied, without changing brightness.
+        recovered.c.preferredCCTMireds=tone==454 ? 333 : 454;
+        recovered.a.SetConfig(recovered.c); recovered.Run(6500);
+        assert(recovered.cct==recovered.c.preferredCCTMireds && recovered.brightness==30 && recovered.fan==0);
+        recovered.extraLux=0; recovered.Run(16000);
+        assert(recovered.Normal());
+    }
     assert(!RehearsalBaseline::Enabled && !RehearsalBaseline::Samples.Valid());
     Rig r;
     r.Run(15000);
@@ -86,7 +107,7 @@ int main() {
         r.Run(3000);
         assert(r.Normal());
         r.Run(1500);
-        assert(r.brightness < 100 && r.brightness > 30 && r.fan < 100 && r.fan > 20 && r.cct > 250 && r.cct < 454);
+        assert(r.brightness < 100 && r.brightness > 30 && r.fan < 100 && r.fan > r.c.reliefFanPercent && r.cct > 250 && r.cct < 454);
         r.Run(4500);
         assert(r.Relief());
         r.Run(10000);
@@ -226,7 +247,7 @@ int main() {
         assert(controller.CurrentPhase() == TimedReliefController::Phase::Adjust);
         for (int i = 0; i < 25; ++i)
             tick(2);
-        assert(output.brightnessPercent == 30 && output.fanPercent == 20);
+        assert(output.brightnessPercent == 30 && output.fanPercent == config.reliefFanPercent);
         for (int i = 0; i < 18; ++i)
             tick(.7f);
         for (int i = 0; i < 4; ++i)
