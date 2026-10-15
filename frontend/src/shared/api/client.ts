@@ -138,7 +138,7 @@ export async function getProfile(): Promise<AppConfig> {
   // Older firmware did not return a preferred tone. Preserve its allowed range.
   // 누락된 시간 필드만 시연 기본값으로 채운다. 반환된 저장 설정은 변경하지 않는다.
   // 변경 전 누락 필드 기본값: reliefHoldMs: 1500, recoverConfirmMs: 2500.
-  return { ...config, occupancyAutomationEnabled: config.occupancyAutomationEnabled ?? true, normalCCTMireds: config.normalCCTMireds ?? config.minCCTMireds, reliefFanPercent: config.reliefFanPercent ?? 20, reliefHoldMs: config.reliefHoldMs ?? demoTimingDefaults.reliefHoldMs, recoverConfirmMs: config.recoverConfirmMs ?? demoTimingDefaults.recoverConfirmMs, preferredFanPercent: config.preferredFanPercent ?? Math.min(60, config.fanMaxPercent), preferredBrightness: config.preferredBrightness ?? config.maxBrightness, preferredCCTMireds: config.preferredCCTMireds ??
+  return { ...config, occupancyAutomationEnabled: config.occupancyAutomationEnabled ?? true, normalCCTMireds: config.normalCCTMireds ?? config.minCCTMireds, reliefFanPercent: config.reliefFanPercent ?? 0, reliefHoldMs: config.reliefHoldMs ?? demoTimingDefaults.reliefHoldMs, recoverConfirmMs: config.recoverConfirmMs ?? demoTimingDefaults.recoverConfirmMs, preferredFanPercent: config.preferredFanPercent ?? Math.min(60, config.fanMaxPercent), preferredBrightness: config.preferredBrightness ?? config.maxBrightness, preferredCCTMireds: config.preferredCCTMireds ??
     Math.round((config.minCCTMireds + config.maxCCTMireds) / 2) };
 }
 

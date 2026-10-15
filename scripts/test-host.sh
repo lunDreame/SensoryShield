@@ -5,6 +5,8 @@ test_dir=$(mktemp -d "${TMPDIR:-/tmp}/sensoryshield-tests.XXXXXX")
 trap 'rm -rf "$test_dir"' EXIT
 compiler="${CXX:-c++}"
 flags=(-std=c++17 -pthread -Wall -Wextra -Werror -Itests/host/stubs -Isrc)
+"$compiler" -Itests/host/mic_stubs "${flags[@]}" tests/host/mic_capture_test.cpp src/peripheral/Mic.cpp -o "$test_dir/mic_capture"
+"$test_dir/mic_capture"
 for test in stimulus_score light_presence sound_fan algorithm_environment memory_config environment_measurement output_aware_inputs fan_peripheral automatic_flow occupancy_automation default_output_rebase proportional_flow joint_relief fan_output_integration system_runtime; do
   sources=("tests/host/${test}_test.cpp")
   case "$test" in

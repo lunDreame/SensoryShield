@@ -2,6 +2,7 @@
 
 #include "common/device/Light.h"
 #include "common/device/Fan.h"
+#include "peripheral/Mic.h"
 #include "system/matter_bridge.h"
 #include "system/memory.h"
 #include "system/system.h"
@@ -20,7 +21,7 @@ LOG_MODULE_REGISTER(threadrest, LOG_LEVEL_INF);
 
 #define THREAD_REST_PORT 80U
 #define THREAD_REST_REQUEST_CAPACITY 512U
-#define THREAD_REST_RESPONSE_CAPACITY 1024U
+#define THREAD_REST_RESPONSE_CAPACITY 1536U
 
 enum class ApiRoute : uint8_t { Status, Light, Fan, Mode, Profile, Diagnostics, FactoryReset, Measurement, Comfort };
 
@@ -626,7 +627,7 @@ int ThreadRest::BuildStatusJson(char* buffer, size_t bufferSize) const {
 
     int ret = FormatFixed(lux, sizeof(lux), snapshot.lux, 10U, 1U);
     if (ret == 0) {
-        ret = FormatFixed(soundEnergy, sizeof(soundEnergy), snapshot.sound.energy, 1000U, 3U);
+        ret = FormatFixed(soundEnergy, sizeof(soundEnergy), snapshot.sound.energy, 1000000U, 6U);
     }
     if (ret == 0) {
         ret = FormatFixed(sensoryScore, sizeof(sensoryScore), target.sensoryScore, 1000U, 3U);
@@ -688,6 +689,7 @@ int ThreadRest::BuildDiagnosticsJson(char* buffer, size_t bufferSize) const {
 
     const SensorSnapshot snapshot = GetSystem()->Snapshot();
     const FanDiagnostics fan = GetSystem()->GetFanDiagnostics();
+    const auto mic = GetMic()->GetDiagnostics();
     const AppConfig config = GetMemory()->Config();
     char lightWeight[16];
     char soundWeight[16];
@@ -705,6 +707,8 @@ int ThreadRest::BuildDiagnosticsJson(char* buffer, size_t bufferSize) const {
                  "{\"demo\":{\"enabled\":%s,\"baselineFrozen\":%s},\"firmware\":\"%s\",\"uptimeSeconds\":%u,\"storage\":{\"appConfig\":true,"
                  "\"deviceTable\":true},\"sensors\":{\"illuminance\":%s,\"mic\":%s,\"pir\":%s},"
                  "\"matter\":{\"commissioned\":%s,\"fabricCount\":%u,\"threadAttached\":%s},"
+                 "\"microphone\":{\"sampleCount\":%u,\"sampleAgeMs\":%u,\"restartCount\":%u,"
+                 "\"lastError\":%d,\"fresh\":%s,\"recovering\":%s},"
                  "\"fan\":{\"targetPercent\":%u,\"appliedDutyPercent\":%u,\"boosting\":%s,"
                  "\"outputValid\":%s,\"lastError\":%d,\"changedAgoMs\":%u,"
                  "\"stabilizationWaiting\":%s,\"controlInputsSettled\":%s},"
@@ -715,7 +719,9 @@ int ThreadRest::BuildDiagnosticsJson(char* buffer, size_t bufferSize) const {
                  APP_NAME, k_uptime_get_32() / 1000U, snapshot.illuminanceValid ? "true" : "false",
                  snapshot.micValid ? "true" : "false", snapshot.pirValid ? "true" : "false",
                  GetMatterBridge()->Commissioned() ? "true" : "false", GetMatterBridge()->FabricCount(),
-                 GetMatterBridge()->ThreadAttached() ? "true" : "false", fan.targetPercent,
+                 GetMatterBridge()->ThreadAttached() ? "true" : "false",
+                 mic.sampleCount, mic.sampleAgeMs, mic.restartCount, mic.lastError,
+                 mic.fresh ? "true" : "false", mic.recovering ? "true" : "false", fan.targetPercent,
                  fan.appliedDutyPercent, fan.boosting ? "true" : "false", fan.outputValid ? "true" : "false",
                  fan.lastError, fan.changedAgoMs, fan.stabilizationWaiting ? "true" : "false",
                  fan.controlInputsSettled ? "true" : "false", lightWeight, soundWeight,

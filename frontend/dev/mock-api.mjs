@@ -13,7 +13,7 @@ export function mockApi() {
   const started = Date.now();
   let profile = { lightWeight: 0.55, soundWeight: 0.45, minBrightness: 30, maxBrightness: 100,
     minCCTMireds: 250, maxCCTMireds: 454, preferredCCTMireds: 454, preferredBrightness: 100, preferredFanPercent: 100, fanMaxPercent: 100, occupancyTimeoutMs: 30000, occupancyAutomationEnabled: false,
-    normalCCTMireds:250, reliefFanPercent:20, reliefHoldMs:5000, recoverConfirmMs:3000, profileConfigured: false };
+    normalCCTMireds:250, reliefFanPercent:0, reliefHoldMs:5000, recoverConfirmMs:3000, profileConfigured: false };
   let initialEnvironment = null;
   let measurement = {state:"idle",samples:0,requiredSamples:31,luxMedian:0,luxMad:0,soundMedian:0,soundMad:0};
   let measurementStarted = 0;
@@ -195,7 +195,9 @@ export function mockApi() {
             scenario === "fan-pwm-error" ? {targetPercent,appliedDutyPercent:100,boosting:false,outputValid:false,lastError:-5,changedAgoMs:700,stabilizationWaiting:true,controlInputsSettled:false} :
             scenario === "fan-settling" ? {targetPercent,appliedDutyPercent:targetPercent,boosting:false,outputValid:true,lastError:0,changedAgoMs:200,stabilizationWaiting:true,controlInputsSettled:false} :
             {targetPercent,appliedDutyPercent:targetPercent,boosting:false,outputValid:true,lastError:0,changedAgoMs:800,stabilizationWaiting:false,controlInputsSettled:true};
-          send(200,scenario === "legacy-diagnostics" ? {...status.system,profile} : {...status.system,profile,fan});
+          const microphone = {sampleCount:Math.floor((Date.now()-started)/100),sampleAgeMs:micError ? 1500 : 50,
+            restartCount:micError ? 1 : 0,lastError:micError ? -11 : 0,fresh:!micError,recovering:micError};
+          send(200,scenario === "legacy-diagnostics" ? {...status.system,profile} : {...status.system,profile,fan,microphone});
         }
         else send(404,{ok:false});
       });

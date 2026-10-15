@@ -8,7 +8,8 @@
 #define SETUP_CONFIG_VERSION 0x00060000
 #define OUTPUT_CONFIG_VERSION 0x00070000
 #define RELIEF_CONFIG_VERSION 0x00080000
-#define CONFIG_VERSION 0x00090000
+#define OCCUPANCY_CONFIG_VERSION 0x00090000
+#define CONFIG_VERSION 0x000a0000
 #define ENVIRONMENT_SAMPLE_CAPACITY 31
 
 // 공통 센서·제어 주기: 시연을 위해 단축한 값이 아니다.
@@ -27,10 +28,9 @@
 // 공통 실제 모터 구동 제약: 시연 타이머와 별개이며 보드에서 검증한다.
 #define FAN_START_BOOST_MS 350
 #define FAN_MIN_DUTY_PERCENT 18
-#define AUTO_FAN_QUIET_PERCENT 20
 #define AUTO_FAN_NORMAL_PERCENT 60
 // 시연용 시작 설정. SENSORYSHIELD_DEMO_DEFAULTS=0 빌드는 실사용 시작 예시를 사용한다.
-// 저장된 보호자 설정이 우선하며, 펌웨어 업데이트로 기존 설정을 덮어쓰지 않는다.
+// 저장된 보호자 설정이 우선한다. v10 시연 업데이트만 이전 완화 팬 기본값20%를0%로 이관한다.
 #ifndef SENSORYSHIELD_DEMO_DEFAULTS
 #define SENSORYSHIELD_DEMO_DEFAULTS 1
 #endif
@@ -38,6 +38,7 @@
 #define DEMO_TRANSITION_MS 5000 // Demo AUTO recovery and child-request return ramp.
 #define CHILD_TRANSITION_MS 5000
 #if SENSORYSHIELD_DEMO_DEFAULTS
+#define AUTO_FAN_QUIET_PERCENT 0 // Demo relief stops the fan completely.
 #define AUTO_RELIEF_HOLD_MS 5000 // Demo: count AFTER both physical outputs arrive.
 // Everyday example: #define AUTO_RELIEF_HOLD_MS (30 * 60 * 1000)
 #define AUTO_RECOVER_CONFIRM_MS 3000 // Also 3 seconds in the everyday profile.
@@ -53,6 +54,7 @@
 // #define DEFAULT_MAX_BRIGHTNESS 80
 // #define DEFAULT_NORMAL_FAN 60
 #else
+#define AUTO_FAN_QUIET_PERCENT 20
 #define AUTO_RELIEF_HOLD_MS (30 * 60 * 1000)
 #define AUTO_RECOVER_CONFIRM_MS 3000
 #define AUTO_OCCUPANCY_HOLD_MS (15 * 60 * 1000)

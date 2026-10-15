@@ -13,6 +13,8 @@ LOG_MODULE_REGISTER(mic, LOG_LEVEL_INF);
 namespace {
 #define MIC_SAMPLE_RATE_HZ 16000U
 #define MIC_WINDOW_MS 100U
+#define MIC_READ_TIMEOUT_MS 500
+#define MIC_RESTART_DELAY_MS 100
 #define MIC_SAMPLES_PER_WINDOW (MIC_SAMPLE_RATE_HZ * MIC_WINDOW_MS / 1000U)
 #define MIC_BLOCK_BYTES (MIC_SAMPLES_PER_WINDOW * sizeof(int16_t))
 #define MIC_BUFFER_COUNT 8U
@@ -96,6 +98,9 @@ int Mic::Initialize() {
     k_mutex_init(&mLock);
     mFeatures = {0.0f, 0.0f, 0.0f, k_uptime_get_32(), false};
     mHealthy = false;
+    mRecovering = false;
+    mSampleCount = mRestartCount = 0;
+    mLastError = 0;
 
 #if DT_NODE_HAS_STATUS(DT_ALIAS(dmic_dev), okay)
     if (!device_is_ready(dmicDevice)) {
@@ -121,16 +126,25 @@ int Mic::Initialize() {
 
 SoundFeatures Mic::LatestFeatures() const {
     k_mutex_lock(&mLock, K_FOREVER);
-    const SoundFeatures features = mFeatures;
+    SoundFeatures features = mFeatures;
+    // A successful old read is not evidence that capture is still running.
+    features.valid = features.valid && mHealthy && !mRecovering &&
+                     ElapsedUptimeMs(k_uptime_get_32(), features.timestampMs) <= MaxSampleAgeMs;
     k_mutex_unlock(&mLock);
     return features;
 }
 
 bool Mic::Healthy() const {
+    return LatestFeatures().valid;
+}
+
+Mic::Diagnostics Mic::GetDiagnostics() const {
     k_mutex_lock(&mLock, K_FOREVER);
-    const bool healthy = mHealthy;
+    const uint32_t age = ElapsedUptimeMs(k_uptime_get_32(), mFeatures.timestampMs);
+    const Diagnostics result = {mSampleCount, age, mRestartCount, mLastError,
+        mSampleCount > 0 && mHealthy && mFeatures.valid && !mRecovering && age <= MaxSampleAgeMs, mRecovering};
     k_mutex_unlock(&mLock);
-    return healthy;
+    return result;
 }
 
 void Mic::CaptureThread(void* first, void* second, void* third) {
@@ -142,25 +156,62 @@ void Mic::CaptureThread(void* first, void* second, void* third) {
 void Mic::CaptureLoop() {
 #if DT_NODE_HAS_STATUS(DT_ALIAS(dmic_dev), okay)
     while (true) {
-        void* buffer = nullptr;
-        size_t size = 0U;
-        const int ret = dmic_read(dmicDevice, 0U, &buffer, &size, SYS_FOREVER_MS);
-        if (ret != 0) {
-            k_mutex_lock(&mLock, K_FOREVER);
-            mHealthy = false;
-            mFeatures.valid = false;
-            k_mutex_unlock(&mLock);
-            LOG_ERR("PDM read failed: %d", ret);
-            continue;
-        }
-
-        if (buffer != nullptr && size >= sizeof(int16_t)) {
-            SubmitPcmSamples(static_cast<const int16_t*>(buffer), size / sizeof(int16_t));
-        }
-        if (buffer != nullptr) {
-            k_mem_slab_free(&micBuffers, buffer);
-        }
+        (void)CaptureStep();
     }
+#endif
+}
+
+int Mic::CaptureStep() {
+#if DT_NODE_HAS_STATUS(DT_ALIAS(dmic_dev), okay)
+    void* buffer = nullptr;
+    size_t size = 0U;
+    const int ret = dmic_read(dmicDevice, 0U, &buffer, &size, MIC_READ_TIMEOUT_MS);
+    if (ret != 0) return RestartCapture(ret);
+    if (buffer == nullptr || size != MIC_BLOCK_BYTES) {
+        if (buffer != nullptr) k_mem_slab_free(&micBuffers, buffer);
+        return RestartCapture(-EIO);
+    }
+    SubmitPcmSamples(static_cast<const int16_t*>(buffer), size / sizeof(int16_t));
+    k_mem_slab_free(&micBuffers, buffer);
+    return 0;
+#else
+    return -ENODEV;
+#endif
+}
+
+int Mic::RestartCapture(int error) {
+#if DT_NODE_HAS_STATUS(DT_ALIAS(dmic_dev), okay)
+    k_mutex_lock(&mLock, K_FOREVER);
+    mHealthy = mFeatures.valid = false;
+    mRecovering = true;
+    mLastError = error;
+    ++mRestartCount;
+    k_mutex_unlock(&mLock);
+    LOG_WRN("PDM capture interrupted: %d; restarting", error);
+
+    // Nordic's driver stops on RX/slab overflow without waking a forever read.
+    // STOP is asynchronous. Let DMA release its buffers, then free queued old
+    // windows before configuring again; they must not be stamped as fresh data.
+    const int stop = dmic_trigger(dmicDevice, DMIC_TRIGGER_STOP);
+    k_sleep(K_MSEC(MIC_RESTART_DELAY_MS));
+    if (stop != 0) return stop;
+    for (unsigned int i = 0; i < MIC_BUFFER_COUNT; ++i) {
+        void* pending = nullptr;
+        size_t size = 0;
+        if (dmic_read(dmicDevice, 0U, &pending, &size, 0) != 0) break;
+        if (pending != nullptr) k_mem_slab_free(&micBuffers, pending);
+    }
+    const int ret = StartDmicCapture(MIC_PDM_CHANNEL);
+    if (ret != 0) {
+        k_mutex_lock(&mLock, K_FOREVER);
+        mLastError = ret;
+        k_mutex_unlock(&mLock);
+        k_sleep(K_MSEC(MIC_READ_TIMEOUT_MS));
+    }
+    // Only a newly captured window clears recovering/invalid status.
+    return ret;
+#else
+    return -ENODEV;
 #endif
 }
 
@@ -169,12 +220,12 @@ void Mic::SubmitPcmSamples(const int16_t* samples, size_t sampleCount) {
         return;
     }
 
-    float sumSquares = 0.0f;
+    double sumSquares = 0.0;
     float peak = 0.0f;
     for (size_t index = 0; index < sampleCount; ++index) {
         const float normalized = static_cast<float>(samples[index]) / 32768.0f;
         const float magnitude = fabsf(normalized);
-        sumSquares += normalized * normalized;
+        sumSquares += static_cast<double>(normalized) * static_cast<double>(normalized);
         if (magnitude > peak) {
             peak = magnitude;
         }
@@ -182,8 +233,11 @@ void Mic::SubmitPcmSamples(const int16_t* samples, size_t sampleCount) {
 
     k_mutex_lock(&mLock, K_FOREVER);
     const float previousEnergy = mFeatures.energy;
-    const float energy = sqrtf(sumSquares / static_cast<float>(sampleCount));
+    const float energy = fminf(peak, static_cast<float>(sqrt(sumSquares / sampleCount)));
     mFeatures = {energy, peak, fabsf(energy - previousEnergy), k_uptime_get_32(), true};
     mHealthy = true;
+    mRecovering = false;
+    mLastError = 0;
+    ++mSampleCount;
     k_mutex_unlock(&mLock);
 }

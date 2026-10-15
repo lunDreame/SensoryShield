@@ -66,6 +66,14 @@ export interface DiagnosticsResponse {
   matter: SystemHealth["matter"];
   profile: AppConfig;
   fan?: FanDiagnostics;
+  microphone?: {
+    sampleCount: number;
+    sampleAgeMs: number;
+    restartCount: number;
+    lastError: number;
+    fresh: boolean;
+    recovering: boolean;
+  };
 }
 
 export interface AppConfig {

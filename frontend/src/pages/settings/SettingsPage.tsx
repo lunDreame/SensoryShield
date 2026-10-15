@@ -15,7 +15,7 @@ const initialConfig: AppConfig = {
   preferredCCTMireds: 454,
   preferredBrightness: 100,
   preferredFanPercent: 100,
-  normalCCTMireds: 250, reliefFanPercent: 20,
+  normalCCTMireds: 250, reliefFanPercent: 0,
   ...demoTimingDefaults,
   fanMaxPercent: 100,
   occupancyAutomationEnabled: false,
