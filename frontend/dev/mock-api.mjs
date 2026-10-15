@@ -7,7 +7,7 @@ export function mockApi() {
   let scenario = "normal";
   let mode = "AUTO";
   let manualFan = { fanOn: false, fanPercent: 0 };
-  let manualLight = { lightOn: true, brightnessPercent: 60, cctMireds: 370, rgbMode: false, red: 255, green: 255, blue: 255 };
+  let manualLight = { lightOn: true, brightnessPercent: 60, cctMireds: 250, rgbMode: false, red: 255, green: 255, blue: 255 };
   let overrideUntil = 0;
   let child = null;
   const started = Date.now();
@@ -182,7 +182,7 @@ export function mockApi() {
           sensor:{lux:180,occupied:!vacant,soundEnergy:micError ? 0 : noise || impulse ? 0.15 : 0.01,
             baselineReady:scenario !== "warming-up" && !micError,sensoryScore:noise || impulse ? 3 : 0.4,illuminanceValid:true,micValid:!micError,pirValid:true},
           outputs: child ? child.output : mode === "MANUAL" || mode === "OVERRIDE" ? {...manualLight,...manualFan} : mode === "SAFE" ?
-            {lightOn:false,brightnessPercent:0,cctMireds:370,rgbMode:false,red:255,green:255,blue:255,fanOn:false,fanPercent:0} :
+            {lightOn:false,brightnessPercent:0,cctMireds:profile.normalCCTMireds,rgbMode:false,red:255,green:255,blue:255,fanOn:false,fanPercent:0} :
             {lightOn:!autoAbsent && profile.preferredBrightness > 0,brightnessPercent:autoBrightness,cctMireds:autoCct,rgbMode:false,red:255,green:255,blue:255,fanOn:autoSpeed>0,fanPercent:autoSpeed},
           system:{ready:true,mode,overrideRemainingSeconds:mode === "OVERRIDE" ? child ? Math.max(0,Math.ceil((10000-Math.max(5000,Date.now()-child.start))/1000)) : Math.max(0,Math.ceil((overrideUntil-Date.now())/1000)) : 0,
             uptimeSeconds:Math.floor((Date.now()-started)/1000),firmware:"mock-ui-fixtures",

@@ -19,7 +19,7 @@ LightDevice& LightDevice::Instance() {
 
 int LightDevice::Initialize() {
     const AppConfig config = GetMemory()->Config();
-    mCurrentState = {false, 0, config.maxCCTMireds, false, 255, 255, 255};
+    mCurrentState = {false, 0, config.normalCCTMireds, false, 255, 255, 255};
     mPreviousPublished = mCurrentState;
     mLastOnBrightnessPercent = 50;
     MarkMatterDirty();

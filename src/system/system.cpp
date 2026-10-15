@@ -54,7 +54,7 @@ int System::Initialize() {
     const AppConfig config = GetMemory()->Config();
     LOG_INF("Config loaded for runtime");
     k_mutex_lock(&mLock, K_FOREVER);
-    mManualTarget = {false, config.minBrightness, config.maxCCTMireds, false, 255, 255, 255, false, 0, 0.0f};
+    mManualTarget = {false, config.minBrightness, config.normalCCTMireds, false, 255, 255, 255, false, 0, 0.0f};
     k_mutex_unlock(&mLock);
 
     LOG_INF("Initializing peripherals");
