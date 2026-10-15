@@ -16,7 +16,7 @@ export const initialStatus: StatusResponse = {
   outputs: {
     lightOn: false,
     brightnessPercent: 0,
-    cctMireds: 370,
+    cctMireds: 250,
     rgbMode: false,
     red: 255,
     green: 255,

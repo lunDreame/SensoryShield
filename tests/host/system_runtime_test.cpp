@@ -58,6 +58,20 @@ int ThreadRest::Initialize() {return 0;}
 int main() {
     auto& system=System::Instance(); auto& fan=Fan::Instance();
     assert(Memory::Instance().Initialize()==0 && fan.Initialize()==0);
+    // The first power-on uses the normal tone, not the warm relief/range limit.
+    // Saved normal tones still take precedence over the 4,000 K default.
+    const AppConfig defaults=Memory::Instance().Config();
+    assert(defaults.normalCCTMireds==250 && defaults.preferredCCTMireds==454);
+    for (uint16_t tone : {250, 333}) {
+        AppConfig configured=defaults; configured.normalCCTMireds=tone;
+        assert(Memory::Instance().SaveConfig(configured)==0);
+        assert(LightDevice::Instance().Initialize()==0);
+        DeviceCommand power{}; power.type=DeviceCommandType::SetPower; power.power=true;
+        assert(LightDevice::Instance().ApplyCommand(power)==0);
+        const auto first=LightDevice::Instance().CurrentState();
+        assert(first.on && !first.rgbMode && first.cctMireds==tone);
+    }
+    assert(Memory::Instance().SaveConfig(defaults)==0);
     assert(LightDevice::Instance().Initialize()==0 && FanDevice::Instance().Initialize()==0);
     Algorithm::Instance().Initialize(Memory::Instance().Config());
     system.mReady=true;
@@ -133,7 +147,7 @@ int main() {
     run(2500);assert(system.mAppliedTarget.brightnessPercent<100 && system.mAppliedTarget.brightnessPercent>30);
     run(3500);
 #if SENSORYSHIELD_DEMO_DEFAULTS
-    assert(system.mAppliedTarget.brightnessPercent==30 && system.Mode()==ControlMode::Override);
+    assert(system.mAppliedTarget.brightnessPercent==30 && system.mAppliedTarget.cctMireds==454 && system.Mode()==ControlMode::Override);
     assert(system.OverrideRemainingSeconds()>=4);
     run(5500);assert(system.Mode()==ControlMode::Auto);
     run(5000);assert(system.mAppliedTarget.brightnessPercent==100 && system.mAppliedTarget.cctMireds==250);
