@@ -187,14 +187,14 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
   }
 
   const meanings: Partial<Record<EditableConfigKey, string>> = {
-    minBrightness: "완화할 때 사용할 가장 낮은 밝기예요. 시연에서는 큰 변화가 3초 이어지면 이 밝기를 목표로 서서히 낮춰요.",
+    minBrightness: "빛과 소리 변화가 커졌을 때 낮출 수 있는 최소 밝기예요.",
     preferredCCTMireds: "조명을 낮출 때 사용할 빛이에요. 따뜻한 빛과 선명한 빛 중 아이에게 맞게 정해주세요.",
-    reliefFanPercent: "빛과 소리의 합산 변화가 커지면 이 세기로 줄여요. 평소 세기보다 높아지지 않으며, 0%는 팬을 꺼요.",
-    reliefHoldMs: "시연에서는 조명과 팬이 목표에 도달한 뒤 최소한 유지할 시간이에요. 시간이 지나도 큰 변화가 남아 있으면 유지해요. 시연 시작값은 5초예요. 실사용 시작 설정 예시는 1,800초(30분)이며, 아이에게 맞게 조절할 수 있어요.",
-    recoverConfirmMs: "최소 유지 시간과 낮은 변화의 연속 확인을 모두 만족하면 평소 출력으로 서서히 돌아가요. 확인 시간의 시연 시작값은 3초예요. 아이의 진정 시간이 아니라 센서 변화의 안정 확인 시간이며, 실제 환경에 맞게 조절할 수 있어요.",
+    reliefFanPercent: "빛이나 소리 변화가 커지면 이 세기로 줄여요. 평소보다 높이지 않으며, 0%는 팬을 꺼요.",
+    reliefHoldMs: "조명과 팬을 낮춘 상태로 유지할 최소 시간이에요. 빛이나 소리 변화가 크면 더 오래 유지해요.",
+    recoverConfirmMs: "빛과 소리 변화가 작게 유지되는지 확인할 시간이에요. 최소 유지 시간도 지나면 평소 밝기와 바람으로 서서히 돌아가요.",
     preferredBrightness: "자동 모드에서 평소 사용할 밝기이며 완화 후 이 밝기로 돌아와요.",
     normalCCTMireds: "평소 사용할 빛이에요. 완화할 때 사용할 빛과 따로 정할 수 있어요.",
-    preferredFanPercent: "평소 팬 세기이며 완화 후 돌아갈 값이에요. 0%는 자동 팬을 꺼둬요.",
+    preferredFanPercent: "자동 모드에서 평소 사용할 바람 세기예요. 0%는 팬을 꺼둬요.",
     maxBrightness: "평소 밝기와 아이의 밝기 요청에도 적용하는 상한이에요.",
     fanMaxPercent: "평소·완화·수동 요청에 적용하는 팬 목표의 상한이에요. 켤 때는 회전을 시작하기 위해 0.35초 동안 100%로 구동한 뒤 목표 세기로 돌아와요.",
     minCCTMireds: "평소와 완화 색온도를 선택할 수 있는 가장 높은 K 값이에요.",
@@ -215,15 +215,15 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
         <em>{labels[key].unit}</em>
       </div>
       <small className="setting-meaning">{sensitivity ? <><b>{describeSensitivity(Number(displayValue(key)))}</b>
-        {key === "lightWeight" ? " · 높을수록 같은 밝기 증가가 조명과 팬의 공동 완화에 더 크게 반영돼요." : " · 높을수록 같은 소음 증가가 조명과 팬 제어에 더 크게 반영돼요."}</> :
+        {key === "lightWeight" ? " · 높을수록 밝아질 때 조명과 팬을 더 크게 조절해요." : " · 높을수록 소리가 커질 때 조명과 팬을 더 크게 조절해요."}</> :
         <>{cct ? <><b>{describeKelvin(Number(displayValue(key)))}</b> · </> : null}{meanings[key]}</>}</small>
     </label>;
   }
   return <main className="page-grid">
-    <section className="overview"><div className="overview-copy"><h1>설정</h1><p>평소 사용할 출력과 자극을 완화할 방법을 정해보세요.</p></div></section>
+    <section className="overview"><div className="overview-copy"><h1>설정</h1><p>평소 밝기와 바람, 불편할 때 조절할 범위를 정해보세요.</p></div></section>
     <Panel title="개인 맞춤 기준" subtitle="처음 설문조사의 빛·소리 민감도와 완화 색온도를 다시 선택할 수 있어요."
       action={<button className="button button-weak" type="button" disabled={pending} onClick={() => void restartOnboarding()}>개인 설정 다시 하기</button>}>
-      <p className="profile-setting-note">다시 답해도 평소 출력과 유지 시간은 보존돼요. 저장하지 않은 변경 사항은 먼저 저장해 주세요.</p>
+      <p className="profile-setting-note">다시 답해도 평소 밝기·바람과 유지 시간은 유지돼요. 저장하지 않은 변경 사항은 먼저 저장해 주세요.</p>
     </Panel>
     <Panel title="자동 반응 민감도" subtitle="평소보다 밝아지거나 소리가 커졌을 때 반응하는 정도예요.">
       <div className="settings-grid">{field("lightWeight")}{field("soundWeight")}</div>
@@ -231,14 +231,14 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
     </Panel>
     <Panel title="자극 완화 범위" subtitle="자극이 커졌을 때 조명과 팬을 얼마나 낮추고, 어떤 빛으로 바꿀지 정해요.">
       <div className="settings-grid">{(["minBrightness", "preferredCCTMireds", "reliefFanPercent", "reliefHoldMs", "recoverConfirmMs"] as EditableConfigKey[]).map(field)}</div>
-      <details className="settings-output-limits"><summary>전체 출력의 허용 범위</summary>
-        <p className="profile-setting-note">아래 제한은 평소·완화 출력 모두에 적용돼요.</p>
+      <details className="settings-output-limits"><summary>밝기와 바람의 허용 범위</summary>
+        <p className="profile-setting-note">평소와 자극을 줄일 때 모두 적용해요.</p>
         <div className="settings-grid">{(["maxBrightness", "fanMaxPercent", "minCCTMireds", "maxCCTMireds"] as EditableConfigKey[]).map(field)}</div>
       </details>
     </Panel>
-    <Panel title="자동 모드 기본 출력" subtitle="자동 모드를 시작할 때 사용할 밝기·빛·팬 세기예요. 완화 후에는 이 출력을 향해 서서히 돌아가요.">
+    <Panel title="자동 모드의 평소 설정" subtitle="자동 모드에서 평소 사용할 밝기와 바람이에요. 자극이 줄어들면 이 설정으로 서서히 돌아가요.">
       <div className="settings-grid">{(["preferredBrightness", "normalCCTMireds", "preferredFanPercent"] as EditableConfigKey[]).map(field)}</div>
-      <p className="profile-setting-note settings-section-note">평소 밝기·색온도를 저장해서 바꾸면 빛의 비교 기준을, 평소 팬 세기를 바꾸면 소리의 비교 기준을 새 출력이 안정된 뒤 다시 잡아요. 바꾸지 않은 항목의 기준은 유지해요. 홈에서 잠시 수동으로 조절한 값은 기본 출력으로 저장하지 않아요.</p>
+      <p className="profile-setting-note settings-section-note">평소 설정을 바꾸면 새 밝기와 바람에 맞춰 주변 환경을 다시 익혀요. 홈에서 직접 조절한 값은 평소 설정에 저장되지 않아요.</p>
     </Panel>
     <Panel title="재실 확인 설정" subtitle="자동 모드에서 움직임에 따라 조명과 팬을 끄고 다시 시작할지 정해요.">
       <label className="occupancy-toggle">
@@ -250,8 +250,8 @@ export function SettingsPage({ onRestartOnboarding }: SettingsPageProps) {
       </label>
       <p className="profile-setting-note settings-section-note">{config.occupancyAutomationEnabled
         ? "아래 유지 시간 동안 움직임이 감지되지 않으면 조명과 팬을 꺼요. 다시 움직임이 감지되면 자동 모드의 설정에 맞춰 켜져요."
-        : "움직임이 없어도 자동 제어를 계속해요. 종료하려면 홈에서 조명과 팬을 직접 꺼주세요. PIR 센서는 계속 움직임을 감지해요."}</p>
-      <p className="profile-setting-note settings-section-note">PIR 센서는 움직임을 감지해요. 가만히 앉거나 누워 있으면 감지되지 않을 수 있어요. 직접 끈 기기는 움직임이 감지돼도 켜지지 않아요.</p>
+        : "움직임이 없어도 자동 제어를 계속해요. 종료하려면 홈에서 조명과 팬을 직접 꺼주세요. 움직임 감지는 계속해요."}</p>
+      <p className="profile-setting-note settings-section-note">움직임 센서는 가만히 앉거나 누워 있으면 감지되지 않을 수 있어요. 직접 끈 기기는 움직임이 감지돼도 켜지지 않아요.</p>
       <div className="settings-grid">{field("occupancyTimeoutMs")}</div>
     </Panel>
     <div className="settings-actions page-spacer"><span className="save-state" role="status">{state}</span>

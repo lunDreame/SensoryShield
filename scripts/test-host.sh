@@ -21,7 +21,7 @@ for test in stimulus_score light_presence sound_fan algorithm_environment memory
     fan_peripheral) sources+=(src/peripheral/Fan.cpp) ;;
     memory_config) sources+=(src/system/memory.cpp) ;;
   esac
-  "$compiler" "${flags[@]}" -DSENSORYSHIELD_DEMO_DEFAULTS=0 "${sources[@]}" -o "$test_dir/$test"
+  "$compiler" "${flags[@]}" -DDEMO_DEFAULTS=0 "${sources[@]}" -o "$test_dir/$test"
   "$test_dir/$test"
 done
 
@@ -38,6 +38,6 @@ done
 
 # Stored settings still take precedence in both profiles.
 for profile in 1 0; do
-  "$compiler" "${flags[@]}" -DSENSORYSHIELD_DEMO_DEFAULTS="$profile" tests/host/default_profiles_test.cpp src/system/memory.cpp src/common/algorithm/algorithm.cpp src/common/algorithm/stimulus_score.cpp src/common/algorithm/baseline.cpp src/common/algorithm/sensory_relief.cpp -o "$test_dir/default-profile-$profile"
+  "$compiler" "${flags[@]}" -DDEMO_DEFAULTS="$profile" tests/host/default_profiles_test.cpp src/system/memory.cpp src/common/algorithm/algorithm.cpp src/common/algorithm/stimulus_score.cpp src/common/algorithm/baseline.cpp src/common/algorithm/sensory_relief.cpp -o "$test_dir/default-profile-$profile"
   "$test_dir/default-profile-$profile"
 done

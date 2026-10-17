@@ -3,10 +3,10 @@
 
 namespace RehearsalBaseline {
 // Fill with 31 paired REAL lux / normalized PCM RMS samples at the venue.
-// No synthetic baseline is enabled in the shipped source. See README.md here.
+// Sampling configuration: docs/control.md.
 inline constexpr bool Enabled = false;
 inline const InitialEnvironment Samples = {
-    0,  // Tomorrow: 31, after filling BOTH arrays with actual samples.
+    0,  // Set to 31 after filling BOTH arrays with actual samples.
     {}, // lux: 31 actual illuminance observations, in lx.
     {}, // sound: 31 paired normalized PCM RMS observations, in [0,1].
 };

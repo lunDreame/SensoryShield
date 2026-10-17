@@ -146,7 +146,7 @@ int main() {
     assert(system.mAppliedTarget.brightnessPercent==100); // Acceptance does not jump output.
     run(2500);assert(system.mAppliedTarget.brightnessPercent<100 && system.mAppliedTarget.brightnessPercent>30);
     run(3500);
-#if SENSORYSHIELD_DEMO_DEFAULTS
+#if DEMO_DEFAULTS
     assert(system.mAppliedTarget.brightnessPercent==30 && system.mAppliedTarget.cctMireds==454 && system.Mode()==ControlMode::Override);
     assert(system.OverrideRemainingSeconds()>=4);
     run(5500);assert(system.Mode()==ControlMode::Auto);

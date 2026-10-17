@@ -24,9 +24,9 @@ export function EnvironmentSummary({ sensor }: EnvironmentSummaryProps) {
           <span>주변 소리</span>
           <strong>{soundValid ? `${soundPercent.toFixed(3)}%` : "측정 불가"}</strong>
           {soundValid ? <div className="sound-input-track" aria-hidden="true"><div style={{ width: `${soundPercent}%` }} /></div> : null}
-          <small>{soundValid ? "마이크 상대 입력 · dB 아님" : "마이크 연결 상태를 확인하세요"}</small>
+          <small>{soundValid ? "소리의 상대적인 크기예요" : "마이크 연결 상태를 확인하세요"}</small>
         </div>
-        <Metric label="공간의 자극 정도" value={score !== null && (sensor.illuminanceValid || sensor.micValid) ? score.toFixed(1) : "--"} detail={sensor.baselineReady === false ? "현재 환경 기준 · 사용하며 자동 갱신" : "빛과 소리 변화"} />
+        <Metric label="공간의 자극 정도" value={score !== null && (sensor.illuminanceValid || sensor.micValid) ? score.toFixed(1) : "--"} detail={sensor.baselineReady === false ? "평소 환경을 익히고 있어요" : "빛과 소리 변화"} />
       </div>
     </Panel>
   );

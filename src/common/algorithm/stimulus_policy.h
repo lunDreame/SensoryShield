@@ -9,7 +9,7 @@ namespace StimulusPolicy {
 inline constexpr float LearnScore = 0.7f; // Inclusive; (0.7, 1.4) is observation-only for increases.
 inline constexpr float EnterScore = 1.4f;
 inline constexpr float RecoverScore = 0.7f;
-#if SENSORYSHIELD_DEMO_DEFAULTS
+#if DEMO_DEFAULTS
 inline constexpr uint32_t EnterMs = 3000;
 // Everyday controller: inline constexpr uint32_t EnterMs = 750;
 #else

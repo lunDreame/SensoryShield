@@ -39,9 +39,9 @@ export function ModeSwitch({ mode, available, overrideRemainingSeconds }: ModeSw
     try {
       const result = await setMode(next);
       if (!result.ok) throw new Error("rejected");
-      setMessage(`${labels[next]} 모드로 변경을 요청했어요. 수신된 작동 방식을 확인해 주세요.`);
+      setMessage(`${labels[next]} 모드로 변경을 요청했어요. 잠시 후 작동 방식을 확인해 주세요.`);
     } catch {
-      setError("기기와 연결할 수 없어 제어 모드를 변경하지 못했어요.");
+      setError("기기와 연결할 수 없어 작동 방식을 바꾸지 못했어요.");
     } finally {
       requestInFlight.current = false;
       setPending(null);
@@ -66,7 +66,7 @@ export function ModeSwitch({ mode, available, overrideRemainingSeconds }: ModeSw
     </div>
     <div id="mode-description" className={`mode-description mode-${mode.toLowerCase()}`}>
       <b>{available ? `현재 ${labels[mode]} 모드` : "작동 방식 확인 대기"}</b>
-      <p>{available ? mode === "OVERRIDE" ? `목표 상태에 도달한 뒤 남은 유지 시간은 약 ${formatRemainingSeconds(overrideRemainingSeconds)}입니다. 이후 자동 모드로 전환하며, 환경이 안정되면 평소 출력으로 서서히 돌아갑니다.` : descriptions[mode] : "연결 후 작동 방식을 확인하고 변경할 수 있어요."}</p>
+      <p>{available ? mode === "OVERRIDE" ? `목표 상태에 도달한 뒤 남은 유지 시간은 약 ${formatRemainingSeconds(overrideRemainingSeconds)}입니다. 이후 자동 모드로 전환하며, 환경이 안정되면 평소 밝기와 바람으로 서서히 돌아가요.` : descriptions[mode] : "연결 후 작동 방식을 확인하고 변경할 수 있어요."}</p>
     </div>
     {available && (mode === "MANUAL" || mode === "OVERRIDE") ? <button className="button button-weak mode-return" type="button" disabled={pending !== null} onClick={() => void changeMode("AUTO")}>개인 맞춤 자동으로 돌아가기</button> : null}
     {message && available ? <p className="panel-subtitle" role="status" style={{ marginTop: 8 }}>{message}</p> : null}

@@ -14,7 +14,7 @@ struct StimulusScore {
 
 // Positive change / raw MAD, with engineering floors and gains. This is neither
 // NIST's modified Z-score (0.6745 scaling) nor an individual's clinical threshold.
-// Numeric rationale and learning policy: docs/algorithm-threshold-review.json.
+// Scoring and learning policy: docs/control.md.
 class StimulusScorer final {
   public:
     void Reset();

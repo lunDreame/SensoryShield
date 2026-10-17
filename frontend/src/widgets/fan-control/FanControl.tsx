@@ -59,9 +59,9 @@ export function FanControl({ outputs, available, mode }: FanControlProps) {
         if (!modeResult.ok) throw new Error("rejected");
       }
       setDirty(false);
-      setMessage(power ? applyMode === "OVERRIDE" ? `이 바람을 ${formatDurationMinutes(durationMinutes)} 동안 사용한 뒤 개인 맞춤 자동으로 돌아가요.` : "이 바람을 계속 유지해요. 자동으로 돌아가려면 작동 방식에서 선택해 주세요." : "정지 명령을 전송했어요. 수신된 현재 상태를 확인해 주세요.");
+      setMessage(power ? applyMode === "OVERRIDE" ? `이 바람을 ${formatDurationMinutes(durationMinutes)} 동안 사용한 뒤 개인 맞춤 자동으로 돌아가요.` : "이 바람을 계속 유지해요. 자동으로 돌아가려면 작동 방식에서 선택해 주세요." : "팬 끄기를 요청했어요. 잠시 후 상태를 확인해 주세요.");
     } catch {
-      setError("명령 전송 실패 · 선택값은 유지됩니다. 연결 확인 후 다시 적용해 주세요.");
+      setError("팬을 조절하지 못했어요. 연결을 확인하고 다시 적용해 주세요.");
     } finally {
       requestInFlight.current = false;
       setPending(false);
@@ -74,7 +74,7 @@ export function FanControl({ outputs, available, mode }: FanControlProps) {
       action={<span className={`badge fan-mode mode-badge mode-${mode.toLowerCase()}`}>{modeLabel} 모드</span>}>
       <div className="fan-current">
         <div>
-          <span className="fan-label">{available ? "현재 속도" : "마지막 수신 속도"}</span>
+          <span className="fan-label">{available ? "현재 설정 세기" : "마지막 확인 세기"}</span>
           <div className="fan-reading"><strong>{outputs.fanOn ? outputs.fanPercent : 0}</strong><span>%</span></div>
         </div>
         <div className="fan-power">
@@ -87,11 +87,11 @@ export function FanControl({ outputs, available, mode }: FanControlProps) {
         </div>
       </div>
       <p className="fan-mode-note">
-        {mode === "AUTO" ? "자동 제어 중 · 빛과 소리의 합산 변화가 커지면 조명과 팬을 함께 완화합니다." : mode === "OVERRIDE" ? "임시 수동 제어 중 · 직접 조절하면 수동 모드로 바뀝니다." : mode === "MANUAL" ? "수동 제어 중 · 자동 복귀는 아래 작동 방식에서 선택하세요." : "안전 모드 · 자동 또는 수동 모드를 선택하세요."}
+        {mode === "AUTO" ? "자동 제어 중 · 빛이나 소리 변화가 커지면 조명과 팬 세기를 함께 낮춰요." : mode === "OVERRIDE" ? "임시 수동 제어 중 · 직접 조절하면 수동 모드로 바뀝니다." : mode === "MANUAL" ? "수동 제어 중 · 자동 복귀는 아래 작동 방식에서 선택하세요." : "안전 모드 · 자동 또는 수동 모드를 선택하세요."}
       </p>
       <div className="fan-draft">
         <div className="fan-draft-heading">
-          <label htmlFor="fan-speed" className="fan-label">적용할 속도</label>
+          <label htmlFor="fan-speed" className="fan-label">적용할 세기</label>
           <div className="fan-selection"><b>{canStart ? `${selectedSpeed}%` : "--"}</b>
             {dirty ? <span className="fan-unsaved">적용 전</span> : null}</div>
         </div>

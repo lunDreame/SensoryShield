@@ -139,7 +139,7 @@ int Memory::Initialize() {
             } else return -EINVAL;
             if (context->setup.config.version < OCCUPANCY_CONFIG_VERSION)
                 context->setup.config.occupancyAutomationEnabled = true;
-#if SENSORYSHIELD_DEMO_DEFAULTS
+#if DEMO_DEFAULTS
             // Migrate the former demo default once; preserve custom outputs,
             // sensitivity, tone, timings, occupancy and Matter registrations.
             if (context->setup.config.version < CONFIG_VERSION && context->setup.config.reliefFanPercent == 20)

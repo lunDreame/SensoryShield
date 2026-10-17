@@ -715,7 +715,7 @@ int ThreadRest::BuildDiagnosticsJson(char* buffer, size_t bufferSize) const {
                  "\"profile\":{\"lightWeight\":%s,\"soundWeight\":%s,\"minBrightness\":%u,"
                  "\"maxBrightness\":%u,\"minCCTMireds\":%u,\"maxCCTMireds\":%u,"
                  "\"preferredCCTMireds\":%u,\"preferredBrightness\":%u,\"preferredFanPercent\":%u,\"fanMaxPercent\":%u,\"occupancyTimeoutMs\":%u,\"normalCCTMireds\":%u,\"reliefFanPercent\":%u,\"reliefHoldMs\":%u,\"recoverConfirmMs\":%u,\"occupancyAutomationEnabled\":%s,\"profileConfigured\":%s}}",
-                 SENSORYSHIELD_DEMO_DEFAULTS ? "true" : "false", GetSystem()->BaselineFrozen() ? "true" : "false",
+                 DEMO_DEFAULTS ? "true" : "false", GetSystem()->BaselineFrozen() ? "true" : "false",
                  APP_NAME, k_uptime_get_32() / 1000U, snapshot.illuminanceValid ? "true" : "false",
                  snapshot.micValid ? "true" : "false", snapshot.pirValid ? "true" : "false",
                  GetMatterBridge()->Commissioned() ? "true" : "false", GetMatterBridge()->FabricCount(),

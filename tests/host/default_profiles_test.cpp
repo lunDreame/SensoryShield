@@ -3,7 +3,7 @@
 uint32_t testUptimeMs=1000;
 int main() {
     const AppConfig c;
-#if SENSORYSHIELD_DEMO_DEFAULTS
+#if DEMO_DEFAULTS
     assert(c.reliefFanPercent == 0);
     assert(c.reliefHoldMs==5000 && c.recoverConfirmMs==3000 && c.occupancyTimeoutMs==30000);
     assert(c.preferredBrightness==100 && c.preferredFanPercent==100 && c.maxBrightness==100);
@@ -38,12 +38,12 @@ int main() {
     auto& a=Algorithm::Instance();a.Initialize(c);
     InitialEnvironment seed{};seed.count=31;
     for(int i=0;i<31;++i){seed.lux[i]=150;seed.sound[i]=.015f;}
-    assert(a.InstallRehearsalBaseline(seed)==bool(SENSORYSHIELD_DEMO_DEFAULTS));
-    assert(a.BaselineFrozen()==bool(SENSORYSHIELD_DEMO_DEFAULTS));
-#if !SENSORYSHIELD_DEMO_DEFAULTS
+    assert(a.InstallRehearsalBaseline(seed)==bool(DEMO_DEFAULTS));
+    assert(a.BaselineFrozen()==bool(DEMO_DEFAULTS));
+#if !DEMO_DEFAULTS
     SensorSnapshot sample{100,{.01f,.01f,0,0,true},true,0,true,true,true};
     for(int i=0;i<40;++i){testUptimeMs+=250;sample.sound.timestampMs=testUptimeMs;a.EvaluateEnvironment(sample);}
     assert(a.LightBaselineMedian()==100 && !a.BaselineFrozen());
 #endif
-    puts(SENSORYSHIELD_DEMO_DEFAULTS?"demo initial defaults and saved-setting precedence passed":"everyday initial examples and saved-setting precedence passed");
+    puts(DEMO_DEFAULTS?"demo initial defaults and saved-setting precedence passed":"everyday initial examples and saved-setting precedence passed");
 }

@@ -65,7 +65,7 @@ class TimedReliefController final {
             current.fanPercent = 0;
         auto t = current;
         if (action == ComfortAction::Bright || action == ComfortAction::Loud) {
-#if SENSORYSHIELD_DEMO_DEFAULTS
+#if DEMO_DEFAULTS
             t.brightnessPercent =
                 current.brightnessPercent < c.minBrightness ? current.brightnessPercent : c.minBrightness;
 #else
@@ -87,7 +87,7 @@ class TimedReliefController final {
             t.red = t.green = t.blue = 255;
         }
         if (action == ComfortAction::Loud) {
-#if SENSORYSHIELD_DEMO_DEFAULTS
+#if DEMO_DEFAULTS
             t.fanPercent =
                 ClampValue<uint8_t>(NormalizeFanPercent(c.reliefFanPercent, c.fanMaxPercent), 0, current.fanPercent);
 #else

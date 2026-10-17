@@ -37,7 +37,7 @@ int Algorithm::Initialize(const AppConfig& config) {
 }
 
 bool Algorithm::InstallRehearsalBaseline(const InitialEnvironment& initial) {
-#if SENSORYSHIELD_DEMO_DEFAULTS
+#if DEMO_DEFAULTS
     if (!initial.Valid() || !RehearsalBaseline::Matches(mConfig)) return false;
     mStimulusScorer.SeedEnvironment(initial); mBaselineFrozen=true; return true;
 #else
@@ -67,7 +67,7 @@ void Algorithm::SetConfig(const AppConfig& config) {
 StimulusScore Algorithm::EvaluateEnvironment(const SensorSnapshot& snapshot, bool automaticMode) {
     mObserved = mOutputAware.Observe(snapshot);
     SensorSnapshot learning = mObserved;
-    bool ordinaryOutput = (SENSORYSHIELD_DEMO_DEFAULTS || mTimedChild) ? mTimed.IsNormal() : mRelief.IsNormal();
+    bool ordinaryOutput = (DEMO_DEFAULTS || mTimedChild) ? mTimed.IsNormal() : mRelief.IsNormal();
     if (snapshot.observedOutputs.valid) {
         const auto& o = snapshot.observedOutputs;
         const uint8_t normalBrightness = ClampValue(mConfig.preferredBrightness, mConfig.minBrightness, mConfig.maxBrightness);
@@ -117,7 +117,7 @@ ControlTarget Algorithm::Evaluate(const SensorSnapshot& snapshot, const Stimulus
         effectiveSnapshot.occupied = true;
     }
 
-    if (SENSORYSHIELD_DEMO_DEFAULTS || mTimedChild) {
+    if (DEMO_DEFAULTS || mTimedChild) {
         mPreviousTarget=mTimed.Evaluate(effectiveSnapshot,mConfig,stimulus.combined,now);
         if (mTimed.IsNormal()) mTimedChild=false;
         return mPreviousTarget;

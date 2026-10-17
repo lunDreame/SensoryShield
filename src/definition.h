@@ -29,15 +29,15 @@
 #define FAN_START_BOOST_MS 350
 #define FAN_MIN_DUTY_PERCENT 18
 #define AUTO_FAN_NORMAL_PERCENT 60
-// 시연용 시작 설정. SENSORYSHIELD_DEMO_DEFAULTS=0 빌드는 실사용 시작 예시를 사용한다.
+// 시연용 시작 설정. DEMO_DEFAULTS=0 빌드는 실사용 시작 예시를 사용한다.
 // 저장된 보호자 설정이 우선한다. v10 시연 업데이트만 이전 완화 팬 기본값20%를0%로 이관한다.
-#ifndef SENSORYSHIELD_DEMO_DEFAULTS
-#define SENSORYSHIELD_DEMO_DEFAULTS 1
+#ifndef DEMO_DEFAULTS
+#define DEMO_DEFAULTS 1
 #endif
 // Timed demo targets are presentation settings, not clinical calming criteria.
 #define DEMO_TRANSITION_MS 5000 // Demo AUTO recovery and child-request return ramp.
 #define CHILD_TRANSITION_MS 5000
-#if SENSORYSHIELD_DEMO_DEFAULTS
+#if DEMO_DEFAULTS
 #define AUTO_FAN_QUIET_PERCENT 0 // Demo relief stops the fan completely.
 #define AUTO_RELIEF_HOLD_MS 5000 // Demo: count AFTER both physical outputs arrive.
 // Everyday example: #define AUTO_RELIEF_HOLD_MS (30 * 60 * 1000)
